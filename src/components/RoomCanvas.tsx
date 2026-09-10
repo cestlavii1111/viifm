@@ -31,7 +31,7 @@ export default function RoomCanvas({
     <div className="absolute inset-0" onPointerMove={handlePointerMove}>
       <AnalyserProvider value={analyser}>
         <Canvas
-          camera={{ position: [0, 0, 6], fov: 66 }}
+          camera={{ position: [0, 0, 9.5], fov: 72 }}
           gl={{ antialias: true }}
           onCreated={({ gl }) => {
             gl.setClearColor(room.palette.bg, 1);
@@ -43,12 +43,12 @@ export default function RoomCanvas({
           </Suspense>
           <EffectComposer>
             <Bloom
-              intensity={0.5}
-              luminanceThreshold={0.82}
-              luminanceSmoothing={0.3}
+              intensity={0.6}
+              luminanceThreshold={0.8}
+              luminanceSmoothing={0.35}
               mipmapBlur
             />
-            <Vignette eskil={false} offset={0.2} darkness={0.75} />
+            <Vignette eskil={false} offset={0.4} darkness={0.4} />
           </EffectComposer>
         </Canvas>
       </AnalyserProvider>

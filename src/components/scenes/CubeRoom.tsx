@@ -16,8 +16,12 @@ import {
   frostedGlassFragmentShader,
 } from "@/lib/shaders/frosted-glass";
 
-/** Half the cube's side length — the room is HALF*2 units on each edge. */
-const HALF = 7;
+/**
+ * Half the cube's side length — the room is HALF*2 units on each edge.
+ * 10.5 (up from 7) gives the room 50% more scale — the goal is an
+ * engulfing, Turrell-Ganzfeld-like field of color rather than a tight box.
+ */
+const HALF = 10.5;
 
 type BandKey = keyof FrequencyBands;
 
