@@ -43,9 +43,9 @@ export default function RoomCanvas({
           </Suspense>
           <EffectComposer>
             <Bloom
-              intensity={0.7}
-              luminanceThreshold={0.08}
-              luminanceSmoothing={0.6}
+              intensity={0.5}
+              luminanceThreshold={0.82}
+              luminanceSmoothing={0.3}
               mipmapBlur
             />
             <Vignette eskil={false} offset={0.2} darkness={0.75} />

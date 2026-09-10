@@ -11,11 +11,13 @@ import {
   type FrequencyBands,
 } from "@/lib/audio-engine";
 import { useExperience } from "@/lib/store";
+import {
+  frostedGlassVertexShader,
+  frostedGlassFragmentShader,
+} from "@/lib/shaders/frosted-glass";
 
 /** Half the cube's side length — the room is HALF*2 units on each edge. */
 const HALF = 7;
-/** Margin between a wall's dark frame and its glowing inner light panel. */
-const PANEL_MARGIN = 0.9;
 
 type BandKey = keyof FrequencyBands;
 
@@ -45,10 +47,12 @@ function hueFromHex(hex: string): number {
 
 /**
  * "The Room" — a cube the visitor stands at the edge of, looking inward.
- * Five walls (the wall behind the visitor is left dark/unrendered) act as
- * soft light panels that breathe together in time with the music: one
- * shared pulse keeps everything in rhythm, while each wall leans on its own
- * frequency band and phase so the room still feels individually alive.
+ * Five walls (the wall behind the visitor is left dark/unrendered) read as
+ * frosted glass lit from behind: each is one full-surface shader that
+ * diffuses light outward from a soft core rather than showing a flat
+ * colored rectangle. One shared pulse keeps every wall breathing in the
+ * same rhythm as the music; each wall also leans on its own frequency band
+ * and phase so the room still feels individually alive.
  */
 export default function CubeRoom({ room }: { room: Room }) {
   const analyser = useAnalyser();
@@ -118,7 +122,24 @@ export default function CubeRoom({ room }: { room: Room }) {
     ];
   }, [room.palette]);
 
-  const panelRefs = useRef<Record<string, THREE.Mesh | null>>({});
+  const materialRefs = useRef<Record<string, THREE.ShaderMaterial | null>>({});
+
+  // One stable uniforms object per wall, created once — never inside the
+  // render loop below, and never via a hook called in a .map() callback.
+  const wallUniforms = useMemo(() => {
+    const map: Record<
+      string,
+      { uColor: { value: THREE.Color }; uIntensity: { value: number }; uTime: { value: number } }
+    > = {};
+    for (const wall of walls) {
+      map[wall.id] = {
+        uColor: { value: new THREE.Color("#ffffff") },
+        uIntensity: { value: 0.2 },
+        uTime: { value: 0 },
+      };
+    }
+    return map;
+  }, [walls]);
 
   useFrame((state, delta) => {
     let bands: FrequencyBands = { bass: 0.1, mid: 0.1, treble: 0.1, overall: 0.1 };
@@ -136,15 +157,15 @@ export default function CubeRoom({ room }: { room: Room }) {
 
     // Shared envelope: smoothed overall loudness blended with the breath
     // cycle. Heavy smoothing keeps this a slow pulse, not a flicker.
-    const sharedTarget = Math.min(1, bands.overall * 1.6 * 0.7 + breath * 0.3);
+    const sharedTarget = Math.min(1, bands.overall * 3.2 + breath * 0.45);
     sharedEnvelope.current +=
       (sharedTarget - sharedEnvelope.current) * Math.min(1, delta * 1.2);
 
     hueDrift.current += delta * 1.1; // degrees/sec — very slow overall drift
 
     for (const wall of walls) {
-      const mesh = panelRefs.current[wall.id];
-      if (!mesh) continue;
+      const material = materialRefs.current[wall.id];
+      if (!material) continue;
 
       const bandValue = bands[wall.band];
       const prevEnv = wallEnvelopes.current[wall.id] ?? 0.15;
@@ -155,17 +176,19 @@ export default function CubeRoom({ room }: { room: Room }) {
       const combined =
         sharedEnvelope.current * (1 - wall.variance) +
         nextEnv * wall.variance +
-        ownBreath * 0.08;
+        ownBreath * 0.12;
       const intensity = Math.min(1, Math.max(0, combined));
 
       const hue = (wall.hue + hueDrift.current * 0.6 + bands.treble * 10) % 360;
-      const saturation = 0.28 + intensity * 0.32; // stays gentle, never neon
-      const lightness = 0.22 + intensity * 0.32; // soft glow, never blown out
-
+      // Fixed, gentle saturation/lightness for the panel's peak color —
+      // the shader's own dark-to-glow gradient does the brightness work,
+      // so this stays a soft pastel rather than drifting toward neon.
       const color = new THREE.Color();
-      color.setHSL(hue / 360, saturation, lightness);
-      const material = mesh.material as THREE.MeshBasicMaterial;
-      material.color.copy(color);
+      color.setHSL(hue / 360, 0.5, 0.58);
+
+      material.uniforms.uColor.value.copy(color);
+      material.uniforms.uIntensity.value = intensity;
+      material.uniforms.uTime.value = t;
     }
 
     // Subtle head-turn toward the pointer — the visitor looking around the
@@ -181,25 +204,18 @@ export default function CubeRoom({ room }: { room: Room }) {
       <fog attach="fog" args={[room.palette.bg, HALF * 1.4, HALF * 3.2]} />
 
       {walls.map((wall) => (
-        <group key={wall.id} position={wall.position} rotation={wall.rotation}>
-          {/* dark structural wall */}
-          <mesh>
-            <planeGeometry args={wall.size} />
-            <meshBasicMaterial color="#08080a" />
-          </mesh>
-          {/* glowing inset light panel — the part that's audio-reactive */}
-          <mesh
-            position={[0, 0, 0.03]}
+        <mesh key={wall.id} position={wall.position} rotation={wall.rotation}>
+          <planeGeometry args={wall.size} />
+          <shaderMaterial
             ref={(m) => {
-              panelRefs.current[wall.id] = m;
+              materialRefs.current[wall.id] = m;
             }}
-          >
-            <planeGeometry
-              args={[wall.size[0] - PANEL_MARGIN * 2, wall.size[1] - PANEL_MARGIN * 2]}
-            />
-            <meshBasicMaterial color="#222222" toneMapped={false} />
-          </mesh>
-        </group>
+            vertexShader={frostedGlassVertexShader}
+            fragmentShader={frostedGlassFragmentShader}
+            uniforms={wallUniforms[wall.id]}
+            toneMapped={false}
+          />
+        </mesh>
       ))}
     </group>
   );
