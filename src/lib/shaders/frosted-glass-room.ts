@@ -7,17 +7,20 @@
  * same place: a Turrell-Ganzfeld-style coved room rather than a tight box.
  *
  * The surface itself is a neutral white — like a cyclorama in a
- * photo/video studio — and stays that way at rest. Color only ever
- * appears on individual fluted columns once they're "lit": each vertical
- * rib is treated as its own light fixture (constant color/brightness
- * along its full floor-to-ceiling height) rather than the color being a
- * soft wash smeared across a wide area. A lighting cascade fires those
- * columns outward from the one furthest upstage-center — dead center on
- * the back wall — toward the curved side walls, which on this room's
+ * photo/video studio — and stays that way at rest, in silence. Once the
+ * track is actually playing, an ambient wash (tied to the same
+ * per-wall, per-band intensity driving everything else) colors the
+ * whole surface so the room reads as mostly colorful rather than mostly
+ * white with a thin band running through it. On top of that, a lighting
+ * cascade rides through as the room's one moving highlight: each
+ * vertical rib is its own fixture (constant color/brightness along its
+ * full floor-to-ceiling height), and a single ripple fires those columns
+ * outward from the one furthest upstage-center — dead center on the
+ * back wall — toward the curved side walls, which on this room's
  * geometry also means toward the viewer, the way a lighting programmer
- * would chase a run of fixtures rather than fade a whole wall. Lit color
- * is applied as a mix toward its hue rather than added on top of the
- * white base, since adding brightness onto an already-white surface has
+ * would chase a run of fixtures rather than fade a whole wall. Color is
+ * applied as a mix toward its hue rather than added on top of the white
+ * base, since adding brightness onto an already-bright surface has
  * nowhere to go but straight back to clipped white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
@@ -121,30 +124,40 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     float fluteSpread = fluteCount * 0.5;
     float fluteNorm = clamp(abs(fluteIndex) / fluteSpread, 0.0, 1.0);
 
+    // Ambient wash: color the whole surface carries just from how
+    // energetic the moment is, independent of the travelling ripple. At
+    // rest (silence, or the track just starting) intensity is near zero
+    // and this stays clean white; once the track is actually playing the
+    // room should read as mostly colorful, not mostly white with a thin
+    // band running through it. Still driven by the same per-wall,
+    // per-band intensity as everything else, so different areas keep
+    // leaning on whichever frequency band feeds them.
+    float ambient = clamp(intensity * 1.15, 0.0, 0.92);
+    vec3 ambientColor = mix(vec3(1.0), peakColor, 0.75);
+    vec3 color = mix(base, ambientColor, ambient);
+
     // Lighting cascade: a single ripple front, not a repeating wave — a
     // periodic cos band here would put several lit rings on screen at
     // once, reading as multiple ripple origins instead of one. Instead
     // rippleFront is one point travelling from the back-center column
-    // (0) out to the sides (1), and the cascade is a narrow band of
-    // brightness centered on wherever that front currently is, so there
-    // is only ever one visible point of origin. It loops back to 0 (a
-    // fresh ripple starting at center again) once it reaches the sides.
+    // (0) out to the sides (1), and the cascade is a band of brightness
+    // centered on wherever that front currently is, so there is only
+    // ever one visible point of origin. It loops back to 0 (a fresh
+    // ripple starting at center again) once it reaches the sides. This
+    // rides on top of the ambient wash above as the room's one moving
+    // highlight, rather than being the only source of color — so there's
+    // no gap of bare white either ahead of it or in the center behind it.
     float rippleFront = fract(uCascadePhase);
-    float rippleWidth = 0.16;
+    float rippleWidth = 0.32;
     float cascade = exp(-pow((fluteNorm - rippleFront) / rippleWidth, 2.0));
+    float glow = cascade * clamp(uCascadeStrength * 2.4, 0.0, 1.0) * mix(0.7, 1.3, intensity);
 
-    // Brightness also leans on this fragment's wall-blended intensity
-    // (already audio-driven per wall region above), so a lit column still
-    // breathes with whichever band is driving its wall, not just the
-    // cascade's position.
-    float glow = cascade * clamp(uCascadeStrength * 2.4, 0.0, 1.0) * mix(0.35, 1.0, intensity);
-
-    // Mixed toward its hue rather than added — adding light onto the
-    // white base would just clip invisibly back to white. peakColor comes
+    // Mixed toward its hue rather than added — adding light onto an
+    // already-bright base would just clip back to white. peakColor comes
     // straight from the audio-driven wall blend above, so which color
     // fires depends on what's actually playing.
-    vec3 litColor = mix(vec3(1.0), peakColor, 0.88);
-    vec3 color = mix(base, litColor, clamp(glow, 0.0, 1.0));
+    vec3 litColor = mix(vec3(1.0), peakColor, 0.95);
+    color = mix(color, litColor, clamp(glow, 0.0, 1.0));
     color *= fluteShade;
 
     float wave = sin(ribAngle * 14.0 + uTime * 0.05) * 0.01;
