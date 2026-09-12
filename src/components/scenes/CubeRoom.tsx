@@ -102,6 +102,7 @@ export default function CubeRoom({ room }: { room: Room }) {
   // keeps cues feeling like discrete lighting changes rather than a strobe.
   const cascadePhase = useRef(0);
   const cascadePulse = useRef(0);
+  const cascadePulseTarget = useRef(0);
   const lastCueTime = useRef(-10);
 
   const geometry = useMemo(
@@ -196,19 +197,28 @@ export default function CubeRoom({ room }: { room: Room }) {
     hueDrift.current += delta * 1.1; // degrees/sec — very slow overall drift
 
     // A hard bass hit — well above this section's recent floor-to-ceiling
-    // range — fires a lighting "cue": an immediate hue jump plus a bright
-    // ripple pulse, on a cooldown so it reads as distinct cues rather than
-    // flicker. The cue also snaps the ripple forward to its next
-    // center-restart, so a fresh one visibly launches from the back-center
-    // column right on the hit rather than wherever it happened to be.
+    // range — fires a lighting "cue": an immediate hue jump plus a pulse
+    // feeding the column-cascade below, on a cooldown so it reads as
+    // distinct cues rather than flicker. The pulse itself builds and
+    // settles through a proper attack/release envelope rather than
+    // snapping straight to full strength — a hard jump to 1 read as an
+    // abrupt flash rather than a swell. The cue also speeds up the
+    // ripple's travel (below) instead of teleporting its position, so a
+    // hit reads as the ripple surging forward, never a jump-cut.
     const CUE_COOLDOWN = 0.9; // seconds
     if (normalized.bass > 0.8 && t - lastCueTime.current > CUE_COOLDOWN) {
       lastCueTime.current = t;
       hueDrift.current += 30 + Math.random() * 90;
-      cascadePulse.current = 1;
-      cascadePhase.current = Math.ceil(cascadePhase.current + 0.001);
+      cascadePulseTarget.current = 1;
     }
-    cascadePulse.current *= Math.pow(0.5, delta / 0.35); // ~0.35s half-life
+    // Fast-but-continuous attack (reaches most of the way to full
+    // strength in ~150ms — quick enough to feel triggered by the hit,
+    // slow enough not to snap), then the target itself relaxes back to 0
+    // so the release is a slower, graceful fade rather than a hard cutoff.
+    const pulseRate = cascadePulseTarget.current > cascadePulse.current ? 6.5 : 1.6;
+    cascadePulse.current +=
+      (cascadePulseTarget.current - cascadePulse.current) * Math.min(1, delta * pulseRate);
+    cascadePulseTarget.current *= Math.pow(0.5, delta / 0.4);
 
     // Column-lighting cascade: a single ripple travels from the
     // back-center column out to the sides once every 1/cascadeSpeed
