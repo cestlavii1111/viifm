@@ -24,14 +24,17 @@
  * white with a thin band running through it. On top of that, a lighting
  * cascade rides through as the room's one moving highlight: a single
  * ripple travels from the back wall (furthest from the viewer) out
- * toward the viewer, lighting the *whole cross-section* at once —
+ * toward the viewer, usually lighting the *whole cross-section* at once —
  * ceiling, floor, and both side walls together — so it reads as a
  * concentric square frame rippling down the tunnel, the way the
  * reference mockup showed, rather than a single column chasing
- * sideways. Color is applied as a mix toward its hue rather than added
- * on top of the white base, since adding brightness onto an
- * already-bright surface has nowhere to go but straight back to clipped
- * white.
+ * sideways. Which wall regions actually take part varies pass to pass
+ * (see the uCascadeMask* uniforms) so it isn't always the full ring —
+ * sometimes just one side wall, or just ceiling+floor — which keeps the
+ * animation from reading as one fixed, repeating shape. Color is applied
+ * as a mix toward its hue rather than added on top of the white base,
+ * since adding brightness onto an already-bright surface has nowhere to
+ * go but straight back to clipped white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
   varying vec3 vPos;
@@ -64,6 +67,20 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uCascadePhase;
   uniform float uCascadeStrength;
   uniform float uCascadeWidth;
+  // Which wall regions the current cascade actually lights up. The ripple
+  // used to always light the whole cross-section together (ceiling, floor,
+  // and both sides at once) every single pass, which — however smooth any
+  // one pass looked — reads as repetitive over time since every cycle is
+  // the same shape. These let a given pass instead favor just one side
+  // wall, or just ceiling+floor, occasionally, so the room feels like it's
+  // choosing where to shine rather than looping one fixed pattern. The back
+  // wall (the ripple's origin, at the vanishing point) always stays lit.
+  // Values are smoothed in JS before arriving here, so a change of mode
+  // between passes fades rather than pops.
+  uniform float uCascadeMaskLeft;
+  uniform float uCascadeMaskRight;
+  uniform float uCascadeMaskCeiling;
+  uniform float uCascadeMaskFloor;
   uniform float uExposure;
   varying vec3 vPos;
 
@@ -139,7 +156,10 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // curve. panelIndex is the integer frame id, shared across ceiling,
     // floor and both side walls at a given depth, so a seam reads as one
     // continuous square outline instead of per-wall texture.
-    float panelCount = 22.0; // nested square frames down the tunnel
+    // Panel count scales with the tunnel's depth (see CubeRoom's DEPTH) so
+    // each frame stays roughly the same physical size rather than
+    // stretching thinner every time the tunnel gets longer.
+    float panelCount = 35.0; // nested square frames down the tunnel
     float panelRaw = depthN * panelCount;
     float panelUv = fract(panelRaw);
     float panel = sin(panelUv * 3.14159265);
@@ -174,17 +194,55 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // ahead of it or behind it. Its width is no longer a fixed constant —
     // uCascadeWidth swells on a hit, so the ripple visibly thickens as it
     // passes rather than only changing brightness/speed.
+    // Distance from the ripple's current front, wrapped so the tunnel reads
+    // as one continuous loop rather than a seam: without wrapping, a ripple
+    // approaching the viewer (depthN -> 1) while the next one is just
+    // starting at the back (front just reset to ~0) would measure as *far*
+    // apart even though visually the old one is fading right as a new one
+    // begins — that mismatch is what made the fade at the front and the
+    // build at the back feel like two disconnected, sharp-edged events
+    // instead of one gentle cycle.
     float rippleFront = fract(uCascadePhase);
-    float cascade = exp(-pow((depthN - rippleFront) / uCascadeWidth, 2.0));
-    float glow = cascade * clamp(uCascadeStrength * 2.4, 0.0, 1.0) * mix(0.7, 1.3, intensity);
+    float delta = depthN - rippleFront;
+    delta -= floor(delta + 0.5);
+    float cascade = exp(-pow(delta / uCascadeWidth, 2.0));
+    // A hard clamp here let the Gaussian's peak flatten into a plateau
+    // whenever strength pushed past ~0.42 — the ripple would sit pinned at
+    // full brightness across its center and then drop off abruptly at the
+    // shoulders, reading as a sharp edge rather than a smooth swell. A soft
+    // exponential saturation approaches full brightness gradually instead,
+    // so even a strong hit still tapers gently in and out.
+    float amp = 1.0 - exp(-uCascadeStrength * 2.4);
+    // Gate the ripple by which wall region this fragment mostly belongs to.
+    // wLeft/wRight/wCeiling/wFloor/wBack already sum to ~1 and blend smoothly
+    // across corners, so multiplying by them here keeps that same smooth
+    // blend at the seam between a masked-out wall and its lit neighbor,
+    // rather than introducing a new hard boundary.
+    float wallMask = wLeft * uCascadeMaskLeft + wRight * uCascadeMaskRight +
+      wCeiling * uCascadeMaskCeiling + wFloor * uCascadeMaskFloor + wBack;
+    float glow = cascade * amp * mix(0.7, 1.3, intensity) * wallMask;
 
     // Mixed toward its hue rather than added — adding light onto an
     // already-bright base would just clip back to white. peakColor comes
     // straight from the audio-driven wall blend above, so which color
     // fires depends on what's actually playing.
     vec3 litColor = mix(vec3(1.0), peakColor, 0.95);
-    color = mix(color, litColor, clamp(glow, 0.0, 1.0));
+    // Same reasoning as amp above: a hard clamp(glow, 0, 1) here would slice
+    // the top off the mix factor whenever glow crept past 1.0 (it can, via
+    // the mix(0.7, 1.3, intensity) headroom multiplier above), producing a
+    // visible flat-topped hot spot with sharp shoulders. Softening it the
+    // same way keeps the brightest moment of the ripple gently rounded.
+    color = mix(color, litColor, 1.0 - exp(-glow));
     color *= panelShade;
+
+    // The vanishing point was reading as one flat, evenly-bright square
+    // rather than a small point receding into the distance — nothing made
+    // it recede visually, only the geometry's own perspective. Dimming the
+    // back stretch of the tunnel (low depthN) gives it real depth: the far
+    // end fades down into a small, dim point instead of glowing exactly as
+    // bright as the walls right in front of the viewer.
+    float depthDarken = mix(0.4, 1.0, smoothstep(0.0, 0.4, depthN));
+    color *= depthDarken;
 
     float wave = sin(panelRaw * 3.0 + uTime * 0.05) * 0.01;
     color += wave;

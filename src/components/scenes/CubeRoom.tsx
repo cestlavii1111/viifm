@@ -29,8 +29,12 @@ const HALF = 10.5;
  * big square" rather than a tunnel receding into the distance. Making
  * the tunnel much longer than it is wide is what actually produces the
  * shrinking-toward-a-point perspective the reference mockup shows.
+ * Pushed further this round (5x -> 8x) — even at 5x the far end still
+ * read as one big square rather than a small vanishing point; keep this
+ * in sync with the camera z position in RoomCanvas.tsx if it changes
+ * again.
  */
-const DEPTH = HALF * 5;
+const DEPTH = HALF * 8;
 /**
  * How generously the corners/edges round off. This used to be a large
  * fraction of HALF so the whole room read as one continuous curved
@@ -62,6 +66,20 @@ function hueFromHex(hex: string): number {
   const hsl = { h: 0, s: 0, l: 0 };
   c.getHSL(hsl);
   return hsl.h * 360;
+}
+
+/**
+ * Picks which wall regions the next ripple pass lights up. Weighted so the
+ * full concentric ring — every wall together — is still the most common
+ * shape, with the narrower options mixed in often enough to keep the
+ * animation from reading as one fixed, repeating loop.
+ */
+function pickCascadeMask(): { left: number; right: number; ceiling: number; floor: number } {
+  const r = Math.random();
+  if (r < 0.5) return { left: 1, right: 1, ceiling: 1, floor: 1 }; // full ring
+  if (r < 0.67) return { left: 1, right: 0, ceiling: 0, floor: 0 }; // left wall only
+  if (r < 0.84) return { left: 0, right: 1, ceiling: 0, floor: 0 }; // right wall only
+  return { left: 0, right: 0, ceiling: 1, floor: 1 }; // ceiling + floor only
 }
 
 /**
@@ -124,6 +142,14 @@ export default function CubeRoom({ room }: { room: Room }) {
   const lastBassCueTime = useRef(-10);
   const lastMidCueTime = useRef(-10);
   const lastTrebleCueTime = useRef(-10);
+  // Which wall regions the ripple lights up. Left at "full ring" (all 1s)
+  // most of the time, but a bass cue occasionally narrows it to just one
+  // side wall or just ceiling+floor, so the cascade doesn't always trace
+  // the exact same shape every pass. Current values ease toward the target
+  // each frame (see CASCADE_MASK_RATE below) rather than snapping, so a
+  // mode change fades in/out instead of popping.
+  const cascadeMaskTarget = useRef({ left: 1, right: 1, ceiling: 1, floor: 1 });
+  const cascadeMaskCurrent = useRef({ left: 1, right: 1, ceiling: 1, floor: 1 });
 
   const geometry = useMemo(
     // The color/fluting comes entirely from the fragment shader reading
@@ -167,6 +193,10 @@ export default function CubeRoom({ room }: { room: Room }) {
       uCascadePhase: { value: 0 },
       uCascadeStrength: { value: 0.08 },
       uCascadeWidth: { value: 0.13 },
+      uCascadeMaskLeft: { value: 1 },
+      uCascadeMaskRight: { value: 1 },
+      uCascadeMaskCeiling: { value: 1 },
+      uCascadeMaskFloor: { value: 1 },
       // The base surface is now an intentionally clean white (see the
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
@@ -241,6 +271,10 @@ export default function CubeRoom({ room }: { room: Room }) {
       lastBassCueTime.current = t;
       hueDrift.current += 30 + Math.random() * 90;
       cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 1);
+      // Re-roll which walls the cascade favors on the biggest cue (bass),
+      // rather than every cue — narrowing the shape on every hi-hat would
+      // make the room feel twitchy rather than just varied over time.
+      cascadeMaskTarget.current = pickCascadeMask();
     }
     if (normalized.mid > 0.82 && t - lastMidCueTime.current > 0.6) {
       lastMidCueTime.current = t;
@@ -252,14 +286,29 @@ export default function CubeRoom({ room }: { room: Room }) {
       hueDrift.current += 8 + Math.random() * 20;
       cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 0.35);
     }
-    // Fast-but-continuous attack (reaches most of the way to full
-    // strength in ~150ms — quick enough to feel triggered by the hit,
-    // slow enough not to snap), then the target itself relaxes back to 0
-    // so the release is a slower, graceful fade rather than a hard cutoff.
-    const pulseRate = cascadePulseTarget.current > cascadePulse.current ? 6.5 : 1.6;
+    // Continuous attack/release toward the cue target. Eased further this
+    // round — the previous 6.5 attack rate still reached ~90% of full
+    // strength in under half a second, which read as a quick snap rather
+    // than a build once combined with the shader's own softened glow curve.
+    // Slowing both the rise and the fall gives the pulse (and everything it
+    // drives — cascade speed/strength/width) a genuinely gradual swell in
+    // and settle out instead of a sharp attack with a merely-slower decay.
+    const pulseRate = cascadePulseTarget.current > cascadePulse.current ? 4.2 : 1.1;
     cascadePulse.current +=
       (cascadePulseTarget.current - cascadePulse.current) * Math.min(1, delta * pulseRate);
-    cascadePulseTarget.current *= Math.pow(0.5, delta / 0.4);
+    cascadePulseTarget.current *= Math.pow(0.5, delta / 0.55);
+
+    // Ease the wall mask toward its (possibly just re-rolled) target too,
+    // so switching which walls the cascade favors fades in rather than
+    // popping between one shape and another mid-animation.
+    const maskRate = 1.4;
+    const maskTarget = cascadeMaskTarget.current;
+    const maskCurrent = cascadeMaskCurrent.current;
+    maskCurrent.left += (maskTarget.left - maskCurrent.left) * Math.min(1, delta * maskRate);
+    maskCurrent.right += (maskTarget.right - maskCurrent.right) * Math.min(1, delta * maskRate);
+    maskCurrent.ceiling +=
+      (maskTarget.ceiling - maskCurrent.ceiling) * Math.min(1, delta * maskRate);
+    maskCurrent.floor += (maskTarget.floor - maskCurrent.floor) * Math.min(1, delta * maskRate);
 
     // Square-frame lighting cascade: a single ripple travels from the
     // back wall out toward the viewer once every 1/cascadeSpeed seconds
@@ -316,6 +365,10 @@ export default function CubeRoom({ room }: { room: Room }) {
       material.uniforms.uCascadePhase.value = cascadePhase.current;
       material.uniforms.uCascadeStrength.value = cascadeStrength;
       material.uniforms.uCascadeWidth.value = cascadeWidth;
+      material.uniforms.uCascadeMaskLeft.value = maskCurrent.left;
+      material.uniforms.uCascadeMaskRight.value = maskCurrent.right;
+      material.uniforms.uCascadeMaskCeiling.value = maskCurrent.ceiling;
+      material.uniforms.uCascadeMaskFloor.value = maskCurrent.floor;
     }
 
     // Subtle head-turn toward the pointer — the visitor looking around the
