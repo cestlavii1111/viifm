@@ -140,6 +140,7 @@ export default function CubeRoom({ room }: { room: Room }) {
       uTime: { value: 0 },
       uTunnelPhase: { value: 0 },
       uTunnelStrength: { value: 0.08 },
+      uExposure: { value: 0.68 },
     }),
     []
   );
@@ -200,14 +201,16 @@ export default function CubeRoom({ room }: { room: Room }) {
     }
     tunnelPulse.current *= Math.pow(0.5, delta / 0.35); // ~0.35s half-life
 
-    // Light-tunnel cascade: a baseline slow sweep that always ticks, sped
-    // up and brightened by overall loudness and by the cue pulse above —
-    // like the tunnel rushes the viewer on a hit.
-    const tunnelSpeed = 0.05 + normalized.overall * 0.35 + tunnelPulse.current * 0.6;
+    // Light-tunnel cascade: a baseline sweep that's always clearly visible
+    // (not just during a cue flash — that read as one single pulse rather
+    // than continuous motion, since the resting strength was too faint to
+    // see against the room's old, overexposed brightness), sped up and
+    // brightened further by overall loudness and by the cue pulse above.
+    const tunnelSpeed = 0.09 + normalized.overall * 0.35 + tunnelPulse.current * 0.6;
     tunnelPhase.current += delta * tunnelSpeed;
     const tunnelStrength = Math.min(
-      0.36,
-      0.035 + normalized.overall * 0.14 + tunnelPulse.current * 0.24
+      0.5,
+      0.11 + normalized.overall * 0.12 + tunnelPulse.current * 0.22
     );
 
     const material = materialRef.current;

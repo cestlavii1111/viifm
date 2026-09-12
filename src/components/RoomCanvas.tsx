@@ -43,8 +43,8 @@ export default function RoomCanvas({
           </Suspense>
           <EffectComposer>
             <Bloom
-              intensity={0.6}
-              luminanceThreshold={0.8}
+              intensity={0.45}
+              luminanceThreshold={0.85}
               luminanceSmoothing={0.35}
               mipmapBlur
             />

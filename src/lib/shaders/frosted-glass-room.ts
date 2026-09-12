@@ -30,6 +30,7 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uTunnelPhase;
   uniform float uTunnelStrength;
+  uniform float uExposure;
   varying vec3 vPos;
 
   float hash(vec2 p) {
@@ -88,7 +89,7 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     vec3 color = mix(paleBottom, peakColor, g);
 
     float hot = smoothstep(0.88, 1.0, t) * intensity;
-    color = mix(color, vec3(1.0), hot * 0.5);
+    color = mix(color, vec3(1.0), hot * 0.32);
 
     // Fluted ribs — a single angle wrapped around the vertical axis, used
     // everywhere (walls, ceiling, floor alike). Because it's one smooth
@@ -119,6 +120,11 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
 
     float dither = (hash(vPos.xz * 60.0 + vPos.y * 13.0) - 0.5) * 0.012;
     color += dither;
+
+    // Global exposure — pulls everything back from the white clip point so
+    // loud/bright moments still have headroom to read as *brighter*
+    // instead of just flattening into solid white.
+    color *= uExposure;
 
     gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
   }
