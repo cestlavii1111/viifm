@@ -158,12 +158,21 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // continuous square outline instead of per-wall texture.
     // Panel count scales with the tunnel's depth (see CubeRoom's DEPTH) so
     // each frame stays roughly the same physical size rather than
-    // stretching thinner every time the tunnel gets longer.
-    float panelCount = 35.0; // nested square frames down the tunnel
+    // stretching thinner every time the tunnel gets longer. Raised again
+    // alongside DEPTH so the tunnel keeps reading as many frames receding
+    // all the way to the point, instead of a run of frames giving way to
+    // one flat, featureless square near the end.
+    float panelCount = 60.0; // nested square frames down the tunnel
     float panelRaw = depthN * panelCount;
     float panelUv = fract(panelRaw);
     float panel = sin(panelUv * 3.14159265);
-    float panelShade = 1.0 + panel * 0.06;
+    // Seam contrast is boosted toward the back of the tunnel (low depthN)
+    // so the nested frames stay individually readable even as the
+    // depth-darkening below dims that whole region — otherwise the panels
+    // furthest back would lose their seams into one flat dark square well
+    // before actually reaching the vanishing point.
+    float panelContrast = mix(0.16, 0.06, depthN);
+    float panelShade = 1.0 + panel * panelContrast;
 
     // Ambient wash: color the whole surface carries just from how
     // energetic the moment is, independent of the travelling ripple. At
@@ -178,7 +187,14 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // a straight linear scale kept the room looking similarly colorful
     // most of the time, which read as static rather than responsive.
     float ambient = clamp(pow(intensity, 1.6) * 1.35, 0.0, 0.92);
-    vec3 ambientColor = mix(vec3(1.0), peakColor, 0.75);
+    // Saturation itself now deepens toward the vanishing point instead of
+    // staying fixed everywhere — a flat 0.75 mix-toward-white read as
+    // pastel/washed-out across the whole tunnel rather than matching the
+    // reference mockup's richly saturated core fading out to soft color at
+    // the viewer's end. depthN is 0 at the back (the point) and 1 at the
+    // viewer, so this pushes hard toward full color as depthN falls.
+    float satDepth = mix(0.55, 0.98, 1.0 - depthN);
+    vec3 ambientColor = mix(vec3(1.0), peakColor, satDepth);
     vec3 color = mix(base, ambientColor, ambient);
 
     // Lighting cascade: a single ripple front, not a repeating wave — a
@@ -226,7 +242,7 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // already-bright base would just clip back to white. peakColor comes
     // straight from the audio-driven wall blend above, so which color
     // fires depends on what's actually playing.
-    vec3 litColor = mix(vec3(1.0), peakColor, 0.95);
+    vec3 litColor = mix(vec3(1.0), peakColor, max(satDepth, 0.95));
     // Same reasoning as amp above: a hard clamp(glow, 0, 1) here would slice
     // the top off the mix factor whenever glow crept past 1.0 (it can, via
     // the mix(0.7, 1.3, intensity) headroom multiplier above), producing a

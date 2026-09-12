@@ -31,10 +31,10 @@ export default function RoomCanvas({
     <div className="absolute inset-0" onPointerMove={handlePointerMove}>
       <AnalyserProvider value={analyser}>
         <Canvas
-          // z=83 sits just inside the tunnel's front opening (CubeRoom's
-          // DEPTH is 84) — keep this in sync with CubeRoom's DEPTH
+          // z=146 sits just inside the tunnel's front opening (CubeRoom's
+          // DEPTH is 147) — keep this in sync with CubeRoom's DEPTH
           // constant if that ever changes.
-          camera={{ position: [0, 0, 83], fov: 72 }}
+          camera={{ position: [0, 0, 146], fov: 72 }}
           gl={{ antialias: true }}
           onCreated={({ gl }) => {
             gl.setClearColor(room.palette.bg, 1);

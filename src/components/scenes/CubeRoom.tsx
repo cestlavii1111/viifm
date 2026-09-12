@@ -29,12 +29,11 @@ const HALF = 10.5;
  * big square" rather than a tunnel receding into the distance. Making
  * the tunnel much longer than it is wide is what actually produces the
  * shrinking-toward-a-point perspective the reference mockup shows.
- * Pushed further this round (5x -> 8x) — even at 5x the far end still
- * read as one big square rather than a small vanishing point; keep this
- * in sync with the camera z position in RoomCanvas.tsx if it changes
- * again.
+ * Pushed further each round (5x -> 8x -> 14x) as the vanishing point kept
+ * reading as too large/flat at the previous depth — keep this in sync
+ * with the camera z position in RoomCanvas.tsx if it changes again.
  */
-const DEPTH = HALF * 8;
+const DEPTH = HALF * 14;
 /**
  * How generously the corners/edges round off. This used to be a large
  * fraction of HALF so the whole room read as one continuous curved
@@ -349,7 +348,13 @@ export default function CubeRoom({ room }: { room: Room }) {
 
         const hue = (wall.hue + hueDrift.current * 0.6 + bands.treble * 10) % 360;
         const color = new THREE.Color();
-        color.setHSL(hue / 360, 0.5, 0.58);
+        // Pushed saturation up and lightness down from the original
+        // 0.5/0.58 — that combination read as pastel/washed-out once mixed
+        // with the shader's own white-leaning blends downstream. This is
+        // the raw "peak" hue the shader then dials up further toward the
+        // vanishing point (see satDepth in the fragment shader) and pulls
+        // back toward pastel near the viewer.
+        color.setHSL(hue / 360, 0.8, 0.5);
 
         const capitalized = wall.id.charAt(0).toUpperCase() + wall.id.slice(1);
         const colorUniform = uniforms[`uColor${capitalized}` as keyof typeof uniforms] as {
