@@ -140,7 +140,13 @@ export default function CubeRoom({ room }: { room: Room }) {
       uTime: { value: 0 },
       uTunnelPhase: { value: 0 },
       uTunnelStrength: { value: 0.08 },
-      uExposure: { value: 0.68 },
+      // The base surface is now an intentionally clean white (see the
+      // shader) rather than a bright-clipping colored wash, so exposure
+      // no longer needs to fight the base itself — it only needs to keep
+      // headroom for the colored light (washes/hot-spot/tunnel) so those
+      // don't blow out. 0.68 was tuned for the old always-colored surface;
+      // at that level it reads as dull grey instead of white.
+      uExposure: { value: 0.92 },
     }),
     []
   );

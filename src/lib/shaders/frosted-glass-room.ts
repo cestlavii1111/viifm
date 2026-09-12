@@ -5,6 +5,13 @@
  * every fragment blends between up to two neighboring "walls" based on
  * where it sits on the box, so color and geometry go soft at exactly the
  * same place: a Turrell-Ganzfeld-style coved room rather than a tight box.
+ *
+ * The surface itself is a neutral white — like a cyclorama in a
+ * photo/video studio — and color arrives only as *light*: a wash bleeding
+ * in from the ceiling and floor seams, and the traveling tunnel bands.
+ * That light is applied as a mix toward its color rather than added on
+ * top of the base, since adding brightness onto an already-white surface
+ * has nowhere to go but straight back to clipped white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
   varying vec3 vPos;
@@ -79,17 +86,28 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
       wBack * uIntensityBack;
     intensity = clamp(intensity, 0.0, 1.0);
 
-    // Vertical gradient across the whole room — bright/saturated near the
-    // ceiling line, fading to a pale tint near the floor.
+    // Base surface: clean, neutral white. Everything else in this shader
+    // is *light* landing on it, not a tint baked into the material.
+    vec3 base = vec3(0.96);
+
+    // Colored wash bleeding in from the ceiling and floor seams — like
+    // colored top-light and uplight on a white cyc — strongest right at
+    // the seams and fading to clean white through the middle of the wall.
+    // Louder/more energetic moments (higher intensity) let the wash reach
+    // further from each seam.
     float t = clamp((vPos.y + uHalf) / (2.0 * uHalf), 0.0, 1.0);
-    float reach = mix(3.2, 0.7, intensity);
-    float g = pow(t, reach);
+    float topReach = mix(0.82, 0.35, intensity);
+    float floorReach = mix(0.88, 0.45, intensity);
+    float topWash = pow(smoothstep(topReach, 1.0, t), 1.4) * intensity;
+    float floorWash = pow(smoothstep(floorReach, 0.0, t), 1.4) * intensity * 0.8;
+    vec3 color = mix(base, peakColor, clamp(topWash + floorWash, 0.0, 0.88));
 
-    vec3 paleBottom = mix(peakColor, vec3(1.0), 0.78);
-    vec3 color = mix(paleBottom, peakColor, g);
-
+    // A brighter, more saturated hot-spot right at the ceiling line — the
+    // "fixture" the light reads as coming from — without blowing to solid
+    // white the way a straight white-mix did.
     float hot = smoothstep(0.88, 1.0, t) * intensity;
-    color = mix(color, vec3(1.0), hot * 0.32);
+    vec3 hotColor = mix(peakColor, vec3(1.0), 0.4);
+    color = mix(color, hotColor, hot * 0.55);
 
     // Fluted ribs — a single angle wrapped around the vertical axis, used
     // everywhere (walls, ceiling, floor alike). Because it's one smooth
@@ -106,17 +124,20 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     float wave = sin(ribAngle * 14.0 + uTime * 0.05) * 0.01;
     color += wave;
 
-    // Light-tunnel cascade: concentric bands travelling from the back wall
-    // (depthN 0) toward the visitor (depthN 1) as uTunnelPhase advances —
-    // like stage lighting rushing the audience on a hit rather than a
-    // static wash. depthN is shared across walls/ceiling/floor, so a band
-    // lights up the whole cross-section it passes through, reading as a
-    // ring sweeping down the room rather than per-wall flicker.
+    // Light-tunnel cascade: concentric colored bands travelling from the
+    // back wall (depthN 0) toward the visitor (depthN 1) as uTunnelPhase
+    // advances — like a colored light rig sweeping down a white cyc,
+    // rather than a static wash. depthN is shared across walls/ceiling/
+    // floor, so a band lights up the whole cross-section it passes
+    // through, reading as a ring sweeping down the room rather than
+    // per-wall flicker. Mixed toward its color rather than added — adding
+    // light onto the white base would just clip invisibly back to white.
     float depthN = clamp((vPos.z + uHalf) / (2.0 * uHalf), 0.0, 1.0);
     float ringCount = 5.0;
     float ringPhase = depthN * ringCount - uTunnelPhase;
     float ring = pow(0.5 + 0.5 * cos(6.28318530718 * ringPhase), 2.0);
-    color += ring * uTunnelStrength * mix(vec3(1.0), peakColor, 0.7);
+    vec3 ringColor = mix(vec3(1.0), peakColor, 0.85);
+    color = mix(color, ringColor, ring * clamp(uTunnelStrength * 1.8, 0.0, 0.9));
 
     float dither = (hash(vPos.xz * 60.0 + vPos.y * 13.0) - 0.5) * 0.012;
     color += dither;
