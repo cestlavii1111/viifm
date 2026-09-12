@@ -97,11 +97,11 @@ export default function CubeRoom({ room }: { room: Room }) {
     overall: 0.03,
   });
   // Stage-lighting cues: a bass hit above its own recent range fires a
-  // "go" — a color jump plus a bright ring pulse feeding the light-tunnel
+  // "go" — a color jump plus a bright pulse feeding the column-cascade
   // effect below — instead of everything drifting continuously. A cooldown
   // keeps cues feeling like discrete lighting changes rather than a strobe.
-  const tunnelPhase = useRef(0);
-  const tunnelPulse = useRef(0);
+  const cascadePhase = useRef(0);
+  const cascadePulse = useRef(0);
   const lastCueTime = useRef(-10);
 
   const geometry = useMemo(
@@ -138,8 +138,8 @@ export default function CubeRoom({ room }: { room: Room }) {
       uIntensityFloor: { value: 0.2 },
       uHalf: { value: HALF },
       uTime: { value: 0 },
-      uTunnelPhase: { value: 0 },
-      uTunnelStrength: { value: 0.08 },
+      uCascadePhase: { value: 0 },
+      uCascadeStrength: { value: 0.08 },
       // The base surface is now an intentionally clean white (see the
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
@@ -203,20 +203,22 @@ export default function CubeRoom({ room }: { room: Room }) {
     if (normalized.bass > 0.8 && t - lastCueTime.current > CUE_COOLDOWN) {
       lastCueTime.current = t;
       hueDrift.current += 30 + Math.random() * 90;
-      tunnelPulse.current = 1;
+      cascadePulse.current = 1;
     }
-    tunnelPulse.current *= Math.pow(0.5, delta / 0.35); // ~0.35s half-life
+    cascadePulse.current *= Math.pow(0.5, delta / 0.35); // ~0.35s half-life
 
-    // Light-tunnel cascade: a baseline sweep that's always clearly visible
-    // (not just during a cue flash — that read as one single pulse rather
-    // than continuous motion, since the resting strength was too faint to
-    // see against the room's old, overexposed brightness), sped up and
-    // brightened further by overall loudness and by the cue pulse above.
-    const tunnelSpeed = 0.09 + normalized.overall * 0.35 + tunnelPulse.current * 0.6;
-    tunnelPhase.current += delta * tunnelSpeed;
-    const tunnelStrength = Math.min(
+    // Column-lighting cascade: a baseline sweep that's always clearly
+    // visible (not just during a cue flash — that read as one single pulse
+    // rather than continuous motion), sped up and brightened further by
+    // overall loudness and by the cue pulse above. This phase drives which
+    // fluted column is "lit" in the shader, firing outward from the
+    // back-center column toward the sides/viewer rather than washing the
+    // whole wall at once.
+    const cascadeSpeed = 0.09 + normalized.overall * 0.35 + cascadePulse.current * 0.6;
+    cascadePhase.current += delta * cascadeSpeed;
+    const cascadeStrength = Math.min(
       0.5,
-      0.11 + normalized.overall * 0.12 + tunnelPulse.current * 0.22
+      0.11 + normalized.overall * 0.12 + cascadePulse.current * 0.22
     );
 
     const material = materialRef.current;
@@ -250,8 +252,8 @@ export default function CubeRoom({ room }: { room: Room }) {
         intensityUniform.value = intensity;
       }
       material.uniforms.uTime.value = t;
-      material.uniforms.uTunnelPhase.value = tunnelPhase.current;
-      material.uniforms.uTunnelStrength.value = tunnelStrength;
+      material.uniforms.uCascadePhase.value = cascadePhase.current;
+      material.uniforms.uCascadeStrength.value = cascadeStrength;
     }
 
     // Subtle head-turn toward the pointer — the visitor looking around the

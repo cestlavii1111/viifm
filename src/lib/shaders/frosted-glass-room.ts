@@ -7,11 +7,18 @@
  * same place: a Turrell-Ganzfeld-style coved room rather than a tight box.
  *
  * The surface itself is a neutral white — like a cyclorama in a
- * photo/video studio — and color arrives only as *light*: a wash bleeding
- * in from the ceiling and floor seams, and the traveling tunnel bands.
- * That light is applied as a mix toward its color rather than added on
- * top of the base, since adding brightness onto an already-white surface
- * has nowhere to go but straight back to clipped white.
+ * photo/video studio — and stays that way at rest. Color only ever
+ * appears on individual fluted columns once they're "lit": each vertical
+ * rib is treated as its own light fixture (constant color/brightness
+ * along its full floor-to-ceiling height) rather than the color being a
+ * soft wash smeared across a wide area. A lighting cascade fires those
+ * columns outward from the one furthest upstage-center — dead center on
+ * the back wall — toward the curved side walls, which on this room's
+ * geometry also means toward the viewer, the way a lighting programmer
+ * would chase a run of fixtures rather than fade a whole wall. Lit color
+ * is applied as a mix toward its hue rather than added on top of the
+ * white base, since adding brightness onto an already-white surface has
+ * nowhere to go but straight back to clipped white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
   varying vec3 vPos;
@@ -35,8 +42,8 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uIntensityFloor;
   uniform float uHalf;
   uniform float uTime;
-  uniform float uTunnelPhase;
-  uniform float uTunnelStrength;
+  uniform float uCascadePhase;
+  uniform float uCascadeStrength;
   uniform float uExposure;
   varying vec3 vPos;
 
@@ -86,58 +93,59 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
       wBack * uIntensityBack;
     intensity = clamp(intensity, 0.0, 1.0);
 
-    // Base surface: clean, neutral white. Everything else in this shader
-    // is *light* landing on it, not a tint baked into the material.
+    // Base surface: clean, neutral white at rest. Nothing below washes
+    // color across a wide area of it — color only ever lands on the
+    // specific fluted columns that are lit.
     vec3 base = vec3(0.96);
-
-    // Colored wash bleeding in from the ceiling and floor seams — like
-    // colored top-light and uplight on a white cyc — strongest right at
-    // the seams and fading to clean white through the middle of the wall.
-    // Louder/more energetic moments (higher intensity) let the wash reach
-    // further from each seam.
-    float t = clamp((vPos.y + uHalf) / (2.0 * uHalf), 0.0, 1.0);
-    float topReach = mix(0.82, 0.35, intensity);
-    float floorReach = mix(0.88, 0.45, intensity);
-    float topWash = pow(smoothstep(topReach, 1.0, t), 1.4) * intensity;
-    float floorWash = pow(smoothstep(floorReach, 0.0, t), 1.4) * intensity * 0.8;
-    vec3 color = mix(base, peakColor, clamp(topWash + floorWash, 0.0, 0.88));
-
-    // A brighter, more saturated hot-spot right at the ceiling line — the
-    // "fixture" the light reads as coming from — without blowing to solid
-    // white the way a straight white-mix did.
-    float hot = smoothstep(0.88, 1.0, t) * intensity;
-    vec3 hotColor = mix(peakColor, vec3(1.0), 0.4);
-    color = mix(color, hotColor, hot * 0.55);
 
     // Fluted ribs — a single angle wrapped around the vertical axis, used
     // everywhere (walls, ceiling, floor alike). Because it's one smooth
     // function of position rather than several coordinates stitched
     // together at a blend boundary, the ribs turn continuously around the
-    // room's curve with no seams or contour artifacts.
+    // room's curve with no seams or contour artifacts. fluteIndex is the
+    // integer column id — constant along a rib's full floor-to-ceiling
+    // height — so each column can be lit as one discrete fixture.
     float ribAngle = atan(vPos.x, -vPos.z);
     float fluteCount = 34.0; // ribs across the visible ~180 degree sweep
-    float fluteUv = fract(ribAngle * fluteCount / 3.14159265);
+    float fluteRaw = ribAngle * fluteCount / 3.14159265;
+    float fluteIndex = floor(fluteRaw);
+    float fluteUv = fract(fluteRaw);
     float flute = sin(fluteUv * 3.14159265);
     float fluteShade = 1.0 + flute * 0.055;
+
+    // Distance of this column from dead-center-back (index 0 — the point
+    // furthest from the viewer), spreading out toward the curved side
+    // walls. On this room's geometry that same direction also carries a
+    // column physically closer to the viewer, so one 0..1 axis is enough
+    // to mean "back-center out to the sides and towards the viewer."
+    float fluteSpread = fluteCount * 0.5;
+    float fluteNorm = clamp(abs(fluteIndex) / fluteSpread, 0.0, 1.0);
+
+    // Lighting cascade: like a run of column fixtures firing outward from
+    // upstage-center, evaluated on fluteIndex (constant per column) so
+    // each one switches on as its own discrete light rather than blending
+    // into its neighbors. uCascadePhase advances with the music so the
+    // lit band keeps travelling outward instead of sitting still.
+    float cascadeCount = 3.0;
+    float cascadePhase = fluteNorm * cascadeCount - uCascadePhase;
+    float cascade = pow(0.5 + 0.5 * cos(6.28318530718 * cascadePhase), 3.0);
+
+    // Brightness also leans on this fragment's wall-blended intensity
+    // (already audio-driven per wall region above), so a lit column still
+    // breathes with whichever band is driving its wall, not just the
+    // cascade's position.
+    float glow = cascade * clamp(uCascadeStrength * 2.4, 0.0, 1.0) * mix(0.35, 1.0, intensity);
+
+    // Mixed toward its hue rather than added — adding light onto the
+    // white base would just clip invisibly back to white. peakColor comes
+    // straight from the audio-driven wall blend above, so which color
+    // fires depends on what's actually playing.
+    vec3 litColor = mix(vec3(1.0), peakColor, 0.88);
+    vec3 color = mix(base, litColor, clamp(glow, 0.0, 1.0));
     color *= fluteShade;
 
     float wave = sin(ribAngle * 14.0 + uTime * 0.05) * 0.01;
     color += wave;
-
-    // Light-tunnel cascade: concentric colored bands travelling from the
-    // back wall (depthN 0) toward the visitor (depthN 1) as uTunnelPhase
-    // advances — like a colored light rig sweeping down a white cyc,
-    // rather than a static wash. depthN is shared across walls/ceiling/
-    // floor, so a band lights up the whole cross-section it passes
-    // through, reading as a ring sweeping down the room rather than
-    // per-wall flicker. Mixed toward its color rather than added — adding
-    // light onto the white base would just clip invisibly back to white.
-    float depthN = clamp((vPos.z + uHalf) / (2.0 * uHalf), 0.0, 1.0);
-    float ringCount = 5.0;
-    float ringPhase = depthN * ringCount - uTunnelPhase;
-    float ring = pow(0.5 + 0.5 * cos(6.28318530718 * ringPhase), 2.0);
-    vec3 ringColor = mix(vec3(1.0), peakColor, 0.85);
-    color = mix(color, ringColor, ring * clamp(uTunnelStrength * 1.8, 0.0, 0.9));
 
     float dither = (hash(vPos.xz * 60.0 + vPos.y * 13.0) - 0.5) * 0.012;
     color += dither;
