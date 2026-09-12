@@ -57,13 +57,14 @@ function hueFromHex(hex: string): number {
 }
 
 /**
- * "The Room" — a visitor stands at the edge of one continuous, rounded
- * chamber (rendered from the inside) and looks inward. Rather than five
- * flat panels meeting at hard corners, the whole surface is one shader:
- * color and curvature soften together at every seam, closer to a Turrell
- * Ganzfeld space than a tight room. One shared pulse keeps the whole room
- * breathing in the same rhythm as the music; each "wall" region also leans
- * on its own frequency band and phase so it still feels individually alive.
+ * "The Room" — a visitor stands at the edge of a sharp-cornered square
+ * tunnel (rendered from the inside) and looks inward, down a series of
+ * square frames receding into the distance. Rather than five flat panels
+ * with independently-colored seams, the whole surface is one shader:
+ * color blends smoothly between neighboring walls right up to each real,
+ * sharp edge. One shared pulse keeps the whole room breathing in the same
+ * rhythm as the music; each "wall" region also leans on its own frequency
+ * band and phase so it still feels individually alive.
  */
 export default function CubeRoom({ room }: { room: Room }) {
   const analyser = useAnalyser();

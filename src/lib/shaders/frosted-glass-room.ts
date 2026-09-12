@@ -1,11 +1,20 @@
 /**
- * Fluted frosted glass for the *whole room as one seamless surface* — used
- * with a square-tunnel geometry (sharp-cornered, rendered from the inside)
- * so it reads as a tunnel of square frames receding back rather than a
- * rounded chamber. Instead of five separately-colored panels, every
- * fragment blends between up to two neighboring "walls" based on where it
- * sits on the box, with the blend pulled in tight to the room's real
- * (now sharp) edges so corners read as crisp squares, not soft curves.
+ * Frosted glass for the *whole room as one seamless surface* — used with a
+ * square-tunnel geometry (sharp-cornered, rendered from the inside) so it
+ * reads as a tunnel of square frames receding back rather than a rounded
+ * chamber. Every fragment blends between up to two neighboring "walls"
+ * based on where it sits on the box, with the blend pulled in tight to the
+ * room's real (now sharp) edges so corners read as crisp squares, not soft
+ * curves.
+ *
+ * The surface texture itself is built the same way: thin square panel
+ * seams nested back to front by depth, shared across ceiling, floor and
+ * both side walls at a given depth, so each seam reads as one continuous
+ * square outline (a shallow "cube" shell) rather than fluted ribs
+ * radiating around a curve. That radial rib pattern — this shader's
+ * previous texture — read as its own dome/onion illusion no matter how
+ * sharp the room's actual corners were, since spokes converging on a
+ * central axis look round regardless of the silhouette they sit inside.
  *
  * The surface itself is a neutral white — like a cyclorama in a
  * photo/video studio — and stays that way at rest, in silence. Once the
@@ -103,35 +112,31 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
       wBack * uIntensityBack;
     intensity = clamp(intensity, 0.0, 1.0);
 
-    // Base surface: clean, neutral white at rest. Nothing below washes
-    // color across a wide area of it — color only ever lands on the
-    // specific fluted columns that are lit.
+    // Base surface: clean, neutral white at rest.
     vec3 base = vec3(0.96);
 
-    // Fluted ribs — a single angle wrapped around the vertical axis, used
-    // everywhere (walls, ceiling, floor alike). Because it's one smooth
-    // function of position rather than several coordinates stitched
-    // together at a blend boundary, the ribs turn continuously around the
-    // room's curve with no seams or contour artifacts. fluteIndex is the
-    // integer column id — constant along a rib's full floor-to-ceiling
-    // height — so each column can be lit as one discrete fixture.
-    float ribAngle = atan(vPos.x, -vPos.z);
-    float fluteCount = 34.0; // ribs across the visible ~180 degree sweep
-    float fluteRaw = ribAngle * fluteCount / 3.14159265;
-    float fluteIndex = floor(fluteRaw);
-    float fluteUv = fract(fluteRaw);
-    float flute = sin(fluteUv * 3.14159265);
-    float fluteShade = 1.0 + flute * 0.055;
-
     // Distance from the back wall (0, furthest from the viewer) to right
-    // at the viewer (1). Driving the cascade on this instead of angle
-    // means a single moment of the cascade lights the *whole* cross
-    // section together — ceiling, floor, and both side walls at once —
-    // which on a square tunnel reads as a concentric square frame
-    // rippling outward, matching the reference. Angle alone only ever lit
-    // one tall vertical column at a time, which read as a line chasing
-    // sideways rather than a ring/frame rippling through the whole cube.
+    // at the viewer (1). Driving both the paneling below and the cascade
+    // further down on this instead of angle means a given moment lights
+    // (or ridges) the *whole* cross section together — ceiling, floor,
+    // and both side walls at once — which on a square tunnel reads as a
+    // concentric square frame, matching the reference. Angle alone always
+    // read as spokes radiating from a central vertical axis, which is its
+    // own dome/onion illusion no matter how sharp the room's actual
+    // corners are.
     float depthN = clamp((vPos.z + uHalf) / (2.0 * uHalf), 0.0, 1.0);
+
+    // Panel structure: the tunnel is built from a series of thin square
+    // frames nested back to front — each one a shallow "cube" shell you
+    // can see the seam of — rather than fluted ribs radiating around a
+    // curve. panelIndex is the integer frame id, shared across ceiling,
+    // floor and both side walls at a given depth, so a seam reads as one
+    // continuous square outline instead of per-wall texture.
+    float panelCount = 22.0; // nested square frames down the tunnel
+    float panelRaw = depthN * panelCount;
+    float panelUv = fract(panelRaw);
+    float panel = sin(panelUv * 3.14159265);
+    float panelShade = 1.0 + panel * 0.06;
 
     // Ambient wash: color the whole surface carries just from how
     // energetic the moment is, independent of the travelling ripple. At
@@ -167,9 +172,9 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // fires depends on what's actually playing.
     vec3 litColor = mix(vec3(1.0), peakColor, 0.95);
     color = mix(color, litColor, clamp(glow, 0.0, 1.0));
-    color *= fluteShade;
+    color *= panelShade;
 
-    float wave = sin(ribAngle * 14.0 + uTime * 0.05) * 0.01;
+    float wave = sin(panelRaw * 3.0 + uTime * 0.05) * 0.01;
     color += wave;
 
     float dither = (hash(vPos.xz * 60.0 + vPos.y * 13.0) - 0.5) * 0.012;
