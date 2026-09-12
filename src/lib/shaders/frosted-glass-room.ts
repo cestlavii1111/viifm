@@ -1,10 +1,11 @@
 /**
  * Fluted frosted glass for the *whole room as one seamless surface* — used
- * with a rounded-box geometry (rendered from the inside) so there are no
- * hard seams where walls meet. Instead of five separately-colored panels,
- * every fragment blends between up to two neighboring "walls" based on
- * where it sits on the box, so color and geometry go soft at exactly the
- * same place: a Turrell-Ganzfeld-style coved room rather than a tight box.
+ * with a square-tunnel geometry (sharp-cornered, rendered from the inside)
+ * so it reads as a tunnel of square frames receding back rather than a
+ * rounded chamber. Instead of five separately-colored panels, every
+ * fragment blends between up to two neighboring "walls" based on where it
+ * sits on the box, with the blend pulled in tight to the room's real
+ * (now sharp) edges so corners read as crisp squares, not soft curves.
  *
  * The surface itself is a neutral white — like a cyclorama in a
  * photo/video studio — and stays that way at rest, in silence. Once the
@@ -12,16 +13,16 @@
  * per-wall, per-band intensity driving everything else) colors the
  * whole surface so the room reads as mostly colorful rather than mostly
  * white with a thin band running through it. On top of that, a lighting
- * cascade rides through as the room's one moving highlight: each
- * vertical rib is its own fixture (constant color/brightness along its
- * full floor-to-ceiling height), and a single ripple fires those columns
- * outward from the one furthest upstage-center — dead center on the
- * back wall — toward the curved side walls, which on this room's
- * geometry also means toward the viewer, the way a lighting programmer
- * would chase a run of fixtures rather than fade a whole wall. Color is
- * applied as a mix toward its hue rather than added on top of the white
- * base, since adding brightness onto an already-bright surface has
- * nowhere to go but straight back to clipped white.
+ * cascade rides through as the room's one moving highlight: a single
+ * ripple travels from the back wall (furthest from the viewer) out
+ * toward the viewer, lighting the *whole cross-section* at once —
+ * ceiling, floor, and both side walls together — so it reads as a
+ * concentric square frame rippling down the tunnel, the way the
+ * reference mockup showed, rather than a single column chasing
+ * sideways. Color is applied as a mix toward its hue rather than added
+ * on top of the white base, since adding brightness onto an
+ * already-bright surface has nowhere to go but straight back to clipped
+ * white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
   varying vec3 vPos;
@@ -122,13 +123,15 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     float flute = sin(fluteUv * 3.14159265);
     float fluteShade = 1.0 + flute * 0.055;
 
-    // Distance of this column from dead-center-back (index 0 — the point
-    // furthest from the viewer), spreading out toward the curved side
-    // walls. On this room's geometry that same direction also carries a
-    // column physically closer to the viewer, so one 0..1 axis is enough
-    // to mean "back-center out to the sides and towards the viewer."
-    float fluteSpread = fluteCount * 0.5;
-    float fluteNorm = clamp(abs(fluteIndex) / fluteSpread, 0.0, 1.0);
+    // Distance from the back wall (0, furthest from the viewer) to right
+    // at the viewer (1). Driving the cascade on this instead of angle
+    // means a single moment of the cascade lights the *whole* cross
+    // section together — ceiling, floor, and both side walls at once —
+    // which on a square tunnel reads as a concentric square frame
+    // rippling outward, matching the reference. Angle alone only ever lit
+    // one tall vertical column at a time, which read as a line chasing
+    // sideways rather than a ring/frame rippling through the whole cube.
+    float depthN = clamp((vPos.z + uHalf) / (2.0 * uHalf), 0.0, 1.0);
 
     // Ambient wash: color the whole surface carries just from how
     // energetic the moment is, independent of the travelling ripple. At
@@ -144,18 +147,18 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
 
     // Lighting cascade: a single ripple front, not a repeating wave — a
     // periodic cos band here would put several lit rings on screen at
-    // once, reading as multiple ripple origins instead of one. Instead
-    // rippleFront is one point travelling from the back-center column
-    // (0) out to the sides (1), and the cascade is a band of brightness
-    // centered on wherever that front currently is, so there is only
-    // ever one visible point of origin. It loops back to 0 (a fresh
-    // ripple starting at center again) once it reaches the sides. This
-    // rides on top of the ambient wash above as the room's one moving
-    // highlight, rather than being the only source of color — so there's
-    // no gap of bare white either ahead of it or in the center behind it.
+    // once, reading as multiple ripple origins instead of one. rippleFront
+    // is one point travelling from the back wall (0) out to the viewer
+    // (1), and the cascade is a band of brightness centered on wherever
+    // that front currently is, so there is only ever one visible ring at
+    // a time. It loops back to 0 (a fresh ripple starting at the back
+    // again) once it reaches the viewer. This rides on top of the ambient
+    // wash above as the room's one moving highlight, rather than being
+    // the only source of color — so there's no gap of bare white either
+    // ahead of it or behind it.
     float rippleFront = fract(uCascadePhase);
-    float rippleWidth = 0.32;
-    float cascade = exp(-pow((fluteNorm - rippleFront) / rippleWidth, 2.0));
+    float rippleWidth = 0.22;
+    float cascade = exp(-pow((depthN - rippleFront) / rippleWidth, 2.0));
     float glow = cascade * clamp(uCascadeStrength * 2.4, 0.0, 1.0) * mix(0.7, 1.3, intensity);
 
     // Mixed toward its hue rather than added — adding light onto an

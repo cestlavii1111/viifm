@@ -214,7 +214,7 @@ export default function CubeRoom({ room }: { room: Room }) {
 
     // A hard hit in any band — well above that band's own recent range —
     // fires a lighting "cue": an immediate hue jump plus a pulse feeding
-    // the column-cascade below, each on its own cooldown so it reads as
+    // the ripple cascade below, each on its own cooldown so it reads as
     // distinct cues rather than flicker. Bass drops are the biggest
     // swings (a bass drop feeling different from a hi-hat is the point),
     // mid catches snares/vocals with a moderate swing, and treble catches
@@ -251,9 +251,11 @@ export default function CubeRoom({ room }: { room: Room }) {
       (cascadePulseTarget.current - cascadePulse.current) * Math.min(1, delta * pulseRate);
     cascadePulseTarget.current *= Math.pow(0.5, delta / 0.4);
 
-    // Column-lighting cascade: a single ripple travels from the
-    // back-center column out to the sides once every 1/cascadeSpeed
-    // seconds (see the shader), sped up and brightened by overall loudness
+    // Square-frame lighting cascade: a single ripple travels from the
+    // back wall out toward the viewer once every 1/cascadeSpeed seconds
+    // (see the shader), lighting the whole cross-section — ceiling,
+    // floor, and both side walls — together at each moment rather than
+    // one column at a time. Sped up and brightened by overall loudness
     // and by the cue pulse above so louder passages send ripples out more
     // often rather than just one lonely pulse crawling along.
     const cascadeSpeed = 0.22 + normalized.overall * 0.55 + cascadePulse.current * 0.9;
