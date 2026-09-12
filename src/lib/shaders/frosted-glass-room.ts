@@ -121,14 +121,17 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     float fluteSpread = fluteCount * 0.5;
     float fluteNorm = clamp(abs(fluteIndex) / fluteSpread, 0.0, 1.0);
 
-    // Lighting cascade: like a run of column fixtures firing outward from
-    // upstage-center, evaluated on fluteIndex (constant per column) so
-    // each one switches on as its own discrete light rather than blending
-    // into its neighbors. uCascadePhase advances with the music so the
-    // lit band keeps travelling outward instead of sitting still.
-    float cascadeCount = 3.0;
-    float cascadePhase = fluteNorm * cascadeCount - uCascadePhase;
-    float cascade = pow(0.5 + 0.5 * cos(6.28318530718 * cascadePhase), 3.0);
+    // Lighting cascade: a single ripple front, not a repeating wave — a
+    // periodic cos band here would put several lit rings on screen at
+    // once, reading as multiple ripple origins instead of one. Instead
+    // rippleFront is one point travelling from the back-center column
+    // (0) out to the sides (1), and the cascade is a narrow band of
+    // brightness centered on wherever that front currently is, so there
+    // is only ever one visible point of origin. It loops back to 0 (a
+    // fresh ripple starting at center again) once it reaches the sides.
+    float rippleFront = fract(uCascadePhase);
+    float rippleWidth = 0.16;
+    float cascade = exp(-pow((fluteNorm - rippleFront) / rippleWidth, 2.0));
 
     // Brightness also leans on this fragment's wall-blended intensity
     // (already audio-driven per wall region above), so a lit column still

@@ -197,24 +197,25 @@ export default function CubeRoom({ room }: { room: Room }) {
 
     // A hard bass hit — well above this section's recent floor-to-ceiling
     // range — fires a lighting "cue": an immediate hue jump plus a bright
-    // ring pulse, on a cooldown so it reads as distinct cues rather than
-    // flicker.
+    // ripple pulse, on a cooldown so it reads as distinct cues rather than
+    // flicker. The cue also snaps the ripple forward to its next
+    // center-restart, so a fresh one visibly launches from the back-center
+    // column right on the hit rather than wherever it happened to be.
     const CUE_COOLDOWN = 0.9; // seconds
     if (normalized.bass > 0.8 && t - lastCueTime.current > CUE_COOLDOWN) {
       lastCueTime.current = t;
       hueDrift.current += 30 + Math.random() * 90;
       cascadePulse.current = 1;
+      cascadePhase.current = Math.ceil(cascadePhase.current + 0.001);
     }
     cascadePulse.current *= Math.pow(0.5, delta / 0.35); // ~0.35s half-life
 
-    // Column-lighting cascade: a baseline sweep that's always clearly
-    // visible (not just during a cue flash — that read as one single pulse
-    // rather than continuous motion), sped up and brightened further by
-    // overall loudness and by the cue pulse above. This phase drives which
-    // fluted column is "lit" in the shader, firing outward from the
-    // back-center column toward the sides/viewer rather than washing the
-    // whole wall at once.
-    const cascadeSpeed = 0.09 + normalized.overall * 0.35 + cascadePulse.current * 0.6;
+    // Column-lighting cascade: a single ripple travels from the
+    // back-center column out to the sides once every 1/cascadeSpeed
+    // seconds (see the shader), sped up and brightened by overall loudness
+    // and by the cue pulse above so louder passages send ripples out more
+    // often rather than just one lonely pulse crawling along.
+    const cascadeSpeed = 0.22 + normalized.overall * 0.55 + cascadePulse.current * 0.9;
     cascadePhase.current += delta * cascadeSpeed;
     const cascadeStrength = Math.min(
       0.5,
