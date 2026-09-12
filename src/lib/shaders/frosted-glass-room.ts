@@ -53,7 +53,13 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uIntensityRight;
   uniform float uIntensityCeiling;
   uniform float uIntensityFloor;
-  uniform float uHalf;
+  // The room's half-extent per axis — x/y (cross-section) and z (depth)
+  // are deliberately different, not a single scalar: the tunnel is much
+  // longer than it is wide, which is what makes the square frames
+  // actually shrink toward a vanishing point instead of the room reading
+  // as one big flat square (a cube viewed from just inside one face barely
+  // shows its far wall as smaller at all).
+  uniform vec3 uHalf;
   uniform float uTime;
   uniform float uCascadePhase;
   uniform float uCascadeStrength;
@@ -124,7 +130,7 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // read as spokes radiating from a central vertical axis, which is its
     // own dome/onion illusion no matter how sharp the room's actual
     // corners are.
-    float depthN = clamp((vPos.z + uHalf) / (2.0 * uHalf), 0.0, 1.0);
+    float depthN = clamp((vPos.z + uHalf.z) / (2.0 * uHalf.z), 0.0, 1.0);
 
     // Panel structure: the tunnel is built from a series of thin square
     // frames nested back to front — each one a shallow "cube" shell you

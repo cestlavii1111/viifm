@@ -18,11 +18,19 @@ import {
 } from "@/lib/shaders/frosted-glass-room";
 
 /**
- * Half the room's side length — the room is HALF*2 units on each edge.
- * 10.5 (up from 7) gives the room 50% more scale — the goal is an
- * engulfing, Turrell-Ganzfeld-like field of color rather than a tight box.
+ * Half the room's cross-section — the visible square is HALF*2 units on
+ * each edge (width and height).
  */
 const HALF = 10.5;
+/**
+ * Half the tunnel's length (its Z extent), independent of HALF. A cube
+ * (DEPTH === HALF) barely shows its far wall as smaller than its near
+ * one from a camera standing just inside one face, so it read as "one
+ * big square" rather than a tunnel receding into the distance. Making
+ * the tunnel much longer than it is wide is what actually produces the
+ * shrinking-toward-a-point perspective the reference mockup shows.
+ */
+const DEPTH = HALF * 5;
 /**
  * How generously the corners/edges round off. This used to be a large
  * fraction of HALF so the whole room read as one continuous curved
@@ -123,7 +131,7 @@ export default function CubeRoom({ room }: { room: Room }) {
     // subdivision — 14 segments was only ever buying smoother *corner*
     // curvature. With the corners now nearly sharp (see CORNER_RADIUS)
     // that resolution is wasted, so this is dropped to 4.
-    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, HALF * 2, 4, CORNER_RADIUS),
+    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, DEPTH * 2, 4, CORNER_RADIUS),
     []
   );
 
@@ -154,7 +162,7 @@ export default function CubeRoom({ room }: { room: Room }) {
       uIntensityRight: { value: 0.2 },
       uIntensityCeiling: { value: 0.2 },
       uIntensityFloor: { value: 0.2 },
-      uHalf: { value: HALF },
+      uHalf: { value: new THREE.Vector3(HALF, HALF, DEPTH) },
       uTime: { value: 0 },
       uCascadePhase: { value: 0 },
       uCascadeStrength: { value: 0.08 },
@@ -311,7 +319,11 @@ export default function CubeRoom({ room }: { room: Room }) {
 
   return (
     <group>
-      <fog attach="fog" args={[room.palette.bg, HALF * 1.4, HALF * 3.2]} />
+      {/* Fog distances now scale with the tunnel's length (DEPTH), not its
+          cross-section (HALF) — the old values were tuned for a room whose
+          depth and width were the same, so they barely faded anything
+          across this much longer tunnel. */}
+      <fog attach="fog" args={[room.palette.bg, DEPTH * 0.5, DEPTH * 1.9]} />
       <mesh geometry={geometry}>
         <shaderMaterial
           ref={materialRef}
