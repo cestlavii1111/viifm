@@ -24,6 +24,61 @@ export function getAudioContext(): AudioContext {
   return sharedCtx;
 }
 
+/**
+ * Single shared <audio> element for the whole experience — mirrors
+ * getAudioContext() above so the same element can be primed from a click
+ * handler (see primeAudioPlayback) and later driven by useAudioEngine's
+ * effects.
+ */
+let sharedAudioEl: HTMLAudioElement | null = null;
+
+function getSharedAudioElement(): HTMLAudioElement {
+  if (!sharedAudioEl) {
+    sharedAudioEl = new Audio();
+    sharedAudioEl.loop = true;
+    sharedAudioEl.crossOrigin = "anonymous";
+  }
+  return sharedAudioEl;
+}
+
+// A given <audio> element can only ever be handed to ONE
+// createMediaElementSource call for its whole lifetime (a hard WebAudio
+// spec restriction — a second call throws). Since the element above is
+// now a persistent singleton rather than freshly created per effect run,
+// the source node it feeds must be a singleton too.
+let sharedAudioSource: MediaElementAudioSourceNode | null = null;
+
+function getSharedAudioSource(
+  ctx: AudioContext,
+  audioEl: HTMLAudioElement
+): MediaElementAudioSourceNode {
+  if (!sharedAudioSource) {
+    sharedAudioSource = ctx.createMediaElementSource(audioEl);
+  }
+  return sharedAudioSource;
+}
+
+/**
+ * Call this synchronously inside the real user-gesture handler (the
+ * "Enter" click) for any room with an audioSrc — resuming the
+ * AudioContext there is not enough on its own. An HTMLMediaElement's
+ * autoplay permission is a separate gate, and Chrome tolerates a `.play()`
+ * call arriving a tick later (e.g. from a React effect scheduled off the
+ * click, which is how useAudioEngine normally starts playback), but
+ * Safari does not — it silently rejects a `.play()` that isn't in the
+ * same call stack as the gesture, leaving the room playing nothing.
+ * Priming the real element here, with its real src, keeps that gesture
+ * "attached" so the effect's later play()/pause() calls keep working.
+ */
+export function primeAudioPlayback(src: string) {
+  const audioEl = getSharedAudioElement();
+  const resolved = new URL(src, window.location.href).href;
+  if (audioEl.src !== resolved) {
+    audioEl.src = src;
+  }
+  void audioEl.play().catch(() => undefined);
+}
+
 interface SynthVoice {
   oscillators: OscillatorNode[];
   filter: BiquadFilterNode;
@@ -73,21 +128,12 @@ export function useAudioEngine(
     masterGainRef.current = masterGain;
     setAnalyser(analyserNode);
 
-    const audioEl = new Audio();
-    audioEl.loop = true;
-    audioEl.crossOrigin = "anonymous";
+    const audioEl = getSharedAudioElement();
     audioElRef.current = audioEl;
-    // A brand-new <audio> element always starts with an empty src, so any
-    // "have we already set the src" bookkeeping from a previous element
-    // (e.g. one torn down by React StrictMode's dev-mode double-invoke of
-    // effects) must not carry over — otherwise the room-sync effect below
-    // sees currentSrcRef already matching room.audioSrc and skips assigning
-    // it to *this* element, leaving it permanently silent.
-    currentSrcRef.current = undefined;
     const audioGain = ctx.createGain();
     audioGain.gain.value = 0;
     audioGainRef.current = audioGain;
-    const source = ctx.createMediaElementSource(audioEl);
+    const source = getSharedAudioSource(ctx, audioEl);
     audioSourceRef.current = source;
     source.connect(audioGain);
     audioGain.connect(masterGain);
@@ -183,9 +229,19 @@ export function useAudioEngine(
 
     const usingTrack = Boolean(room.audioSrc);
 
-    if (usingTrack && currentSrcRef.current !== room.audioSrc) {
-      currentSrcRef.current = room.audioSrc;
-      audioEl.src = room.audioSrc!;
+    // Compare against the element's own resolved src rather than a ref:
+    // primeAudioPlayback (called synchronously from the "Enter" click, for
+    // Safari's sake — see its own comment) may have already set this same
+    // src directly on the shared element before this effect ever runs.
+    // Re-assigning `.src` to an identical-looking value still restarts
+    // playback from the top, so checking the ref alone risked undoing the
+    // very thing priming just started.
+    if (usingTrack) {
+      const resolved = new URL(room.audioSrc!, window.location.href).href;
+      if (audioEl.src !== resolved) {
+        currentSrcRef.current = room.audioSrc;
+        audioEl.src = room.audioSrc!;
+      }
     }
 
     const now = ctx.currentTime;
