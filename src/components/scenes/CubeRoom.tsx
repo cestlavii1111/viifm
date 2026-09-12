@@ -23,9 +23,16 @@ import {
  * engulfing, Turrell-Ganzfeld-like field of color rather than a tight box.
  */
 const HALF = 10.5;
-/** How generously the corners/edges round off — a large fraction of HALF
- * so the room reads as one continuous curved surface, not a beveled box. */
-const CORNER_RADIUS = HALF * 0.42;
+/**
+ * How generously the corners/edges round off. This used to be a large
+ * fraction of HALF so the whole room read as one continuous curved
+ * surface — but at that scale the curvature dominated the silhouette and
+ * read as a bulging "onion" rather than a room. A near-zero radius here
+ * (just enough to avoid a truly infinite-sharp edge, which can cause
+ * lighting/shading artifacts) gives sharp square cross-sections instead:
+ * a tunnel of square frames receding back rather than a rounded chamber.
+ */
+const CORNER_RADIUS = HALF * 0.02;
 
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
@@ -110,7 +117,12 @@ export default function CubeRoom({ room }: { room: Room }) {
   const lastTrebleCueTime = useRef(-10);
 
   const geometry = useMemo(
-    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, HALF * 2, 14, CORNER_RADIUS),
+    // The color/fluting comes entirely from the fragment shader reading
+    // vPos, not from vertex normals, so a flat face looks identical at any
+    // subdivision — 14 segments was only ever buying smoother *corner*
+    // curvature. With the corners now nearly sharp (see CORNER_RADIUS)
+    // that resolution is wasted, so this is dropped to 4.
+    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, HALF * 2, 4, CORNER_RADIUS),
     []
   );
 

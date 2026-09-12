@@ -58,9 +58,15 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     vec3 n = vPos / uHalf; // roughly -1..1 across the room
 
     // Smooth "which wall am I on" weights — sharp enough that each wall
-    // reads as its own color in the middle, soft enough to blend exactly
-    // where the geometry itself curves into its neighbor.
-    float p = 6.0;
+    // reads as its own color in the middle, soft enough not to show a
+    // hard seam. This used to be tuned to blend exactly where the old,
+    // heavily-rounded geometry curved into its neighbor; now that the
+    // room is a sharp-cornered square tunnel, that same blend width would
+    // sit far wider than the actual (near-zero) physical corner, which is
+    // exactly what would make crisp square corners read as soft/rounded
+    // again in color even though the mesh itself is sharp. A much higher
+    // power pulls the color transition back in to hug the real edge.
+    float p = 18.0;
     float wx = pow(abs(n.x), p);
     float wy = pow(abs(n.y), p);
     float wz = pow(abs(n.z), p);
