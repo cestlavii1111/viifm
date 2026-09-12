@@ -14,8 +14,8 @@ export const ROOMS: Room[] = [
     id: "the-room",
     title: "THE ROOM",
     subtitle: "vii.fm",
-    // No audioSrc yet — plays the built-in ambient synth pad.
-    // Drop a file in /public/audio and point audioSrc at it to swap in a real track.
+    // Test track — swap for whatever's live in the room.
+    audioSrc: "/audio/kimpton.mp3",
     scene: "cube-room",
     palette: {
       bg: "#050507",

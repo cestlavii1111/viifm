@@ -77,6 +77,13 @@ export function useAudioEngine(
     audioEl.loop = true;
     audioEl.crossOrigin = "anonymous";
     audioElRef.current = audioEl;
+    // A brand-new <audio> element always starts with an empty src, so any
+    // "have we already set the src" bookkeeping from a previous element
+    // (e.g. one torn down by React StrictMode's dev-mode double-invoke of
+    // effects) must not carry over — otherwise the room-sync effect below
+    // sees currentSrcRef already matching room.audioSrc and skips assigning
+    // it to *this* element, leaving it permanently silent.
+    currentSrcRef.current = undefined;
     const audioGain = ctx.createGain();
     audioGain.gain.value = 0;
     audioGainRef.current = audioGain;
