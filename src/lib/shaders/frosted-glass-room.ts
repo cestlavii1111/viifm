@@ -63,6 +63,7 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uCascadePhase;
   uniform float uCascadeStrength;
+  uniform float uCascadeWidth;
   uniform float uExposure;
   varying vec3 vPos;
 
@@ -151,8 +152,12 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // room should read as mostly colorful, not mostly white with a thin
     // band running through it. Still driven by the same per-wall,
     // per-band intensity as everything else, so different areas keep
-    // leaning on whichever frequency band feeds them.
-    float ambient = clamp(intensity * 1.15, 0.0, 0.92);
+    // leaning on whichever frequency band feeds them. Raised to a power
+    // instead of scaled linearly so quiet/moderate moments sit noticeably
+    // dimmer and only build toward full color as intensity really climbs —
+    // a straight linear scale kept the room looking similarly colorful
+    // most of the time, which read as static rather than responsive.
+    float ambient = clamp(pow(intensity, 1.6) * 1.35, 0.0, 0.92);
     vec3 ambientColor = mix(vec3(1.0), peakColor, 0.75);
     vec3 color = mix(base, ambientColor, ambient);
 
@@ -166,10 +171,11 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // again) once it reaches the viewer. This rides on top of the ambient
     // wash above as the room's one moving highlight, rather than being
     // the only source of color — so there's no gap of bare white either
-    // ahead of it or behind it.
+    // ahead of it or behind it. Its width is no longer a fixed constant —
+    // uCascadeWidth swells on a hit, so the ripple visibly thickens as it
+    // passes rather than only changing brightness/speed.
     float rippleFront = fract(uCascadePhase);
-    float rippleWidth = 0.22;
-    float cascade = exp(-pow((depthN - rippleFront) / rippleWidth, 2.0));
+    float cascade = exp(-pow((depthN - rippleFront) / uCascadeWidth, 2.0));
     float glow = cascade * clamp(uCascadeStrength * 2.4, 0.0, 1.0) * mix(0.7, 1.3, intensity);
 
     // Mixed toward its hue rather than added — adding light onto an

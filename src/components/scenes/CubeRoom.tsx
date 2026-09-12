@@ -166,6 +166,7 @@ export default function CubeRoom({ room }: { room: Room }) {
       uTime: { value: 0 },
       uCascadePhase: { value: 0 },
       uCascadeStrength: { value: 0.08 },
+      uCascadeWidth: { value: 0.13 },
       // The base surface is now an intentionally clean white (see the
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
@@ -264,15 +265,22 @@ export default function CubeRoom({ room }: { room: Room }) {
     // back wall out toward the viewer once every 1/cascadeSpeed seconds
     // (see the shader), lighting the whole cross-section — ceiling,
     // floor, and both side walls — together at each moment rather than
-    // one column at a time. Sped up and brightened by overall loudness
-    // and by the cue pulse above so louder passages send ripples out more
-    // often rather than just one lonely pulse crawling along.
-    const cascadeSpeed = 0.22 + normalized.overall * 0.55 + cascadePulse.current * 0.9;
+    // one column at a time. Baseline speed/strength sit close to zero now
+    // (rather than a third-or-more of their max, which made the cascade
+    // loop at roughly the same rate and brightness no matter what was
+    // playing) — quiet passages let it nearly stall, a held breath, so
+    // loud ones read as a real surge instead of a modest bump on a
+    // cascade that was already constantly running.
+    const cascadeSpeed = 0.04 + normalized.overall * 0.85 + cascadePulse.current * 1.4;
     cascadePhase.current += delta * cascadeSpeed;
     const cascadeStrength = Math.min(
-      0.5,
-      0.11 + normalized.overall * 0.12 + cascadePulse.current * 0.22
+      0.55,
+      0.03 + Math.pow(normalized.overall, 1.6) * 0.32 + cascadePulse.current * 0.32
     );
+    // The ripple's own width now swells on a hit too — not just brighter,
+    // but visibly thicker as it passes — so a cue reads as more than a
+    // color/speed change layered on an otherwise-identical band.
+    const cascadeWidth = 0.13 + cascadePulse.current * 0.24 + normalized.overall * 0.06;
 
     const material = materialRef.current;
     if (material) {
@@ -307,6 +315,7 @@ export default function CubeRoom({ room }: { room: Room }) {
       material.uniforms.uTime.value = t;
       material.uniforms.uCascadePhase.value = cascadePhase.current;
       material.uniforms.uCascadeStrength.value = cascadeStrength;
+      material.uniforms.uCascadeWidth.value = cascadeWidth;
     }
 
     // Subtle head-turn toward the pointer — the visitor looking around the
