@@ -73,6 +73,36 @@ export default function CubeRoom({ room }: { room: Room }) {
     floor: 0.15,
   });
   const hueDrift = useRef(0);
+  // Auto-gain: track a rolling ceiling (recent loud peak) and floor (recent
+  // quiet level) per band, so the room reacts to *this* track's own
+  // dynamic range rather than a fixed multiplier tuned against the old
+  // placeholder synth pad. A hot, full-mix master reads much louder on the
+  // analyser than that sparse pad did — a fixed multiplier tuned for the
+  // pad clamps a real track near max brightness almost permanently, which
+  // looks static instead of pulsing. A peak-only normalizer isn't enough
+  // either: on a steady rise it tracks the current value 1:1 and still
+  // reads as constantly "maxed" — the ceiling and floor need to relax
+  // toward the signal slowly (jumping instantly only to a new extreme) so
+  // there's real contrast between a section's quiet and loud moments.
+  const bandCeilings = useRef<Record<BandKey, number>>({
+    bass: 0.3,
+    mid: 0.3,
+    treble: 0.3,
+    overall: 0.3,
+  });
+  const bandFloors = useRef<Record<BandKey, number>>({
+    bass: 0.03,
+    mid: 0.03,
+    treble: 0.03,
+    overall: 0.03,
+  });
+  // Stage-lighting cues: a bass hit above its own recent range fires a
+  // "go" — a color jump plus a bright ring pulse feeding the light-tunnel
+  // effect below — instead of everything drifting continuously. A cooldown
+  // keeps cues feeling like discrete lighting changes rather than a strobe.
+  const tunnelPhase = useRef(0);
+  const tunnelPulse = useRef(0);
+  const lastCueTime = useRef(-10);
 
   const geometry = useMemo(
     () => new RoundedBoxGeometry(HALF * 2, HALF * 2, HALF * 2, 14, CORNER_RADIUS),
@@ -108,6 +138,8 @@ export default function CubeRoom({ room }: { room: Room }) {
       uIntensityFloor: { value: 0.2 },
       uHalf: { value: HALF },
       uTime: { value: 0 },
+      uTunnelPhase: { value: 0 },
+      uTunnelStrength: { value: 0.08 },
     }),
     []
   );
@@ -126,20 +158,65 @@ export default function CubeRoom({ room }: { room: Room }) {
     // percussive is happening.
     const breath = (Math.sin(t * 0.35) + 1) / 2;
 
+    // Update each band's rolling ceiling/floor (jump instantly to a new
+    // extreme, relax back toward the signal with an ~6s half-life
+    // otherwise) and use the two to normalize this frame's reading to
+    // 0..1 relative to the track's own recent dynamic range.
+    const RELAX_HALF_LIFE = 6; // seconds
+    const relax = 1 - Math.pow(0.5, delta / RELAX_HALF_LIFE);
+    const normalized = {} as FrequencyBands;
+    (Object.keys(bands) as BandKey[]).forEach((key) => {
+      const value = bands[key];
+      const prevCeiling = bandCeilings.current[key];
+      const prevFloor = bandFloors.current[key];
+      const ceiling = value > prevCeiling ? value : prevCeiling + (value - prevCeiling) * relax;
+      const floor = value < prevFloor ? value : prevFloor + (value - prevFloor) * relax;
+      bandCeilings.current[key] = ceiling;
+      bandFloors.current[key] = floor;
+      const range = Math.max(ceiling - floor, 0.02);
+      normalized[key] = Math.min(1, Math.max(0, (value - floor) / range));
+    });
+
     // Shared envelope: smoothed overall loudness blended with the breath
-    // cycle. Heavy smoothing keeps this a slow pulse, not a flicker.
-    const sharedTarget = Math.min(1, bands.overall * 3.2 + breath * 0.45);
+    // cycle. Attack is quick (snaps up on a loud moment, like a lighting
+    // board reacting to a cue) while release is slower, so the room reads
+    // as *triggered* by the music rather than lagging behind it uniformly.
+    const sharedTarget = Math.min(1, normalized.overall * 0.85 + breath * 0.25);
+    const sharedRate = sharedTarget > sharedEnvelope.current ? 3.2 : 0.9;
     sharedEnvelope.current +=
-      (sharedTarget - sharedEnvelope.current) * Math.min(1, delta * 1.2);
+      (sharedTarget - sharedEnvelope.current) * Math.min(1, delta * sharedRate);
 
     hueDrift.current += delta * 1.1; // degrees/sec — very slow overall drift
+
+    // A hard bass hit — well above this section's recent floor-to-ceiling
+    // range — fires a lighting "cue": an immediate hue jump plus a bright
+    // ring pulse, on a cooldown so it reads as distinct cues rather than
+    // flicker.
+    const CUE_COOLDOWN = 0.9; // seconds
+    if (normalized.bass > 0.8 && t - lastCueTime.current > CUE_COOLDOWN) {
+      lastCueTime.current = t;
+      hueDrift.current += 30 + Math.random() * 90;
+      tunnelPulse.current = 1;
+    }
+    tunnelPulse.current *= Math.pow(0.5, delta / 0.35); // ~0.35s half-life
+
+    // Light-tunnel cascade: a baseline slow sweep that always ticks, sped
+    // up and brightened by overall loudness and by the cue pulse above —
+    // like the tunnel rushes the viewer on a hit.
+    const tunnelSpeed = 0.05 + normalized.overall * 0.35 + tunnelPulse.current * 0.6;
+    tunnelPhase.current += delta * tunnelSpeed;
+    const tunnelStrength = Math.min(
+      0.36,
+      0.035 + normalized.overall * 0.14 + tunnelPulse.current * 0.24
+    );
 
     const material = materialRef.current;
     if (material) {
       for (const wall of walls) {
-        const bandValue = bands[wall.band];
+        const bandValue = normalized[wall.band];
         const prevEnv = wallEnvelopes.current[wall.id];
-        const nextEnv = prevEnv + (bandValue - prevEnv) * Math.min(1, delta * 1.6);
+        const wallRate = bandValue > prevEnv ? 5.0 : 1.3;
+        const nextEnv = prevEnv + (bandValue - prevEnv) * Math.min(1, delta * wallRate);
         wallEnvelopes.current[wall.id] = nextEnv;
 
         const ownBreath = (Math.sin(t * 0.3 + wall.phase) + 1) / 2;
@@ -164,6 +241,8 @@ export default function CubeRoom({ room }: { room: Room }) {
         intensityUniform.value = intensity;
       }
       material.uniforms.uTime.value = t;
+      material.uniforms.uTunnelPhase.value = tunnelPhase.current;
+      material.uniforms.uTunnelStrength.value = tunnelStrength;
     }
 
     // Subtle head-turn toward the pointer — the visitor looking around the

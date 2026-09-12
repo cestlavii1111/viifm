@@ -28,6 +28,8 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uIntensityFloor;
   uniform float uHalf;
   uniform float uTime;
+  uniform float uTunnelPhase;
+  uniform float uTunnelStrength;
   varying vec3 vPos;
 
   float hash(vec2 p) {
@@ -102,6 +104,18 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
 
     float wave = sin(ribAngle * 14.0 + uTime * 0.05) * 0.01;
     color += wave;
+
+    // Light-tunnel cascade: concentric bands travelling from the back wall
+    // (depthN 0) toward the visitor (depthN 1) as uTunnelPhase advances —
+    // like stage lighting rushing the audience on a hit rather than a
+    // static wash. depthN is shared across walls/ceiling/floor, so a band
+    // lights up the whole cross-section it passes through, reading as a
+    // ring sweeping down the room rather than per-wall flicker.
+    float depthN = clamp((vPos.z + uHalf) / (2.0 * uHalf), 0.0, 1.0);
+    float ringCount = 5.0;
+    float ringPhase = depthN * ringCount - uTunnelPhase;
+    float ring = pow(0.5 + 0.5 * cos(6.28318530718 * ringPhase), 2.0);
+    color += ring * uTunnelStrength * mix(vec3(1.0), peakColor, 0.7);
 
     float dither = (hash(vPos.xz * 60.0 + vPos.y * 13.0) - 0.5) * 0.012;
     color += dither;
