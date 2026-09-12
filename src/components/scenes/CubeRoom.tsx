@@ -96,14 +96,18 @@ export default function CubeRoom({ room }: { room: Room }) {
     treble: 0.03,
     overall: 0.03,
   });
-  // Stage-lighting cues: a bass hit above its own recent range fires a
+  // Stage-lighting cues: a hit above a band's own recent range fires a
   // "go" — a color jump plus a bright pulse feeding the column-cascade
-  // effect below — instead of everything drifting continuously. A cooldown
-  // keeps cues feeling like discrete lighting changes rather than a strobe.
+  // effect below — instead of everything drifting continuously. Each band
+  // gets its own cooldown so a bass drop, a snare/vocal hit, and a
+  // hi-hat/cymbal can all cue independently rather than only bass ever
+  // triggering anything.
   const cascadePhase = useRef(0);
   const cascadePulse = useRef(0);
   const cascadePulseTarget = useRef(0);
-  const lastCueTime = useRef(-10);
+  const lastBassCueTime = useRef(-10);
+  const lastMidCueTime = useRef(-10);
+  const lastTrebleCueTime = useRef(-10);
 
   const geometry = useMemo(
     () => new RoundedBoxGeometry(HALF * 2, HALF * 2, HALF * 2, 14, CORNER_RADIUS),
@@ -196,20 +200,35 @@ export default function CubeRoom({ room }: { room: Room }) {
 
     hueDrift.current += delta * 1.1; // degrees/sec — very slow overall drift
 
-    // A hard bass hit — well above this section's recent floor-to-ceiling
-    // range — fires a lighting "cue": an immediate hue jump plus a pulse
-    // feeding the column-cascade below, on a cooldown so it reads as
-    // distinct cues rather than flicker. The pulse itself builds and
-    // settles through a proper attack/release envelope rather than
-    // snapping straight to full strength — a hard jump to 1 read as an
-    // abrupt flash rather than a swell. The cue also speeds up the
-    // ripple's travel (below) instead of teleporting its position, so a
-    // hit reads as the ripple surging forward, never a jump-cut.
-    const CUE_COOLDOWN = 0.9; // seconds
-    if (normalized.bass > 0.8 && t - lastCueTime.current > CUE_COOLDOWN) {
-      lastCueTime.current = t;
+    // A hard hit in any band — well above that band's own recent range —
+    // fires a lighting "cue": an immediate hue jump plus a pulse feeding
+    // the column-cascade below, each on its own cooldown so it reads as
+    // distinct cues rather than flicker. Bass drops are the biggest
+    // swings (a bass drop feeling different from a hi-hat is the point),
+    // mid catches snares/vocals with a moderate swing, and treble catches
+    // hi-hats/cymbals with a light one on a much shorter cooldown since
+    // those transients repeat much faster. Math.max on the pulse target
+    // means a smaller cue never steals brightness from a bigger one
+    // already in progress. The pulse itself builds and settles through a
+    // proper attack/release envelope rather than snapping straight to
+    // full strength — a hard jump to 1 read as an abrupt flash rather
+    // than a swell. Cues also speed up the ripple's travel (below)
+    // instead of teleporting its position, so a hit reads as the ripple
+    // surging forward, never a jump-cut.
+    if (normalized.bass > 0.8 && t - lastBassCueTime.current > 0.9) {
+      lastBassCueTime.current = t;
       hueDrift.current += 30 + Math.random() * 90;
-      cascadePulseTarget.current = 1;
+      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 1);
+    }
+    if (normalized.mid > 0.82 && t - lastMidCueTime.current > 0.6) {
+      lastMidCueTime.current = t;
+      hueDrift.current += 15 + Math.random() * 45;
+      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 0.6);
+    }
+    if (normalized.treble > 0.85 && t - lastTrebleCueTime.current > 0.35) {
+      lastTrebleCueTime.current = t;
+      hueDrift.current += 8 + Math.random() * 20;
+      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 0.35);
     }
     // Fast-but-continuous attack (reaches most of the way to full
     // strength in ~150ms — quick enough to feel triggered by the hit,
