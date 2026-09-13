@@ -7,6 +7,7 @@ import { ROOMS } from "@/lib/rooms";
 import { TRACKS } from "@/lib/tracks";
 import { useAudioEngine } from "@/lib/audio-engine";
 import { useIdleTracker, IDLE_FADE_OUT_MS } from "@/lib/use-idle-tracker";
+import { useHideMobileChrome } from "@/lib/use-hide-mobile-chrome";
 import Landing from "@/components/ui/Landing";
 import RoomHUD from "@/components/ui/RoomHUD";
 import RoomCanvas from "@/components/RoomCanvas";
@@ -33,6 +34,10 @@ export default function Experience() {
   // Only watch for idleness once the visitor is actually inside the room —
   // no reason to hide the cursor over the landing gate.
   useIdleTracker(hasEntered);
+  // Mobile Safari's address bar/toolbar otherwise sits there permanently
+  // (see the hook) — run this from the very start (landing gate included)
+  // so it's already collapsed by the time the visitor enters the room.
+  useHideMobileChrome();
 
   useEffect(() => {
     if (isIdle) {

@@ -148,7 +148,13 @@ export default function RoomHUD({ room }: { room: Room }) {
             step={0.01}
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-14 shrink-0 accent-white/80 sm:w-20"
+            // html/body now set touch-action: none globally (see
+            // globals.css — that's what stops a stray finger-drag from
+            // ever triggering a page scroll on mobile), which would
+            // otherwise also block a touch drag on this slider's thumb.
+            // touch-auto opts this one control back in to its normal
+            // touch behavior.
+            className="w-14 shrink-0 touch-auto accent-white/80 sm:w-20"
             aria-label="Volume"
           />
         </div>

@@ -13,20 +13,30 @@
 html,
 body {
   height: 100%;
+  /* One hair taller than the visible viewport on purpose — see
+     use-hide-mobile-chrome.ts. Mobile Safari's own address bar/toolbar
+     only ever collapses in response to an actual scroll gesture on the
+     page; a page that exactly fills 100dvh has nothing to scroll into,
+     so Safari has no reason to ever shrink its chrome, which is what was
+     reading as permanent letterboxing above and below the room even
+     though the canvas itself was already rendering edge-to-edge
+     underneath it. This tiny bit of extra height is what that hook
+     scrolls into to nudge the chrome away. */
+  min-height: calc(100dvh + 1px);
   background: var(--background);
   color: var(--foreground);
   /* iOS Safari still rubber-bands the document past its own edges even
      with overflow: hidden on body — the room stays put but the browser
      lets the page itself stretch on an overscroll gesture, which for a
-     few frames reveals blank browser chrome above/below the canvas (the
-     other half of the "letterboxing" the room was showing on iPhone,
-     alongside the missing-viewport-meta scaling issue). overscroll-behavior
-     is the direct fix; pinning html/body in place is the belt-and-braces
-     fallback for the Safari versions that still bounce anyway. */
+     few frames reveals blank browser chrome above/below the canvas.
+     overscroll-behavior stops the bounce itself; touch-action stops a
+     finger-drag from ever starting a scroll gesture in the first place
+     (the one intentional scroll — the nudge above — is done in JS, which
+     touch-action doesn't affect). Between the two, the extra height above
+     never becomes a visible or draggable scroll area — it only exists for
+     that one programmatic nudge. */
   overscroll-behavior: none;
-  position: fixed;
-  inset: 0;
-  width: 100%;
+  touch-action: none;
 }
 
 body {
