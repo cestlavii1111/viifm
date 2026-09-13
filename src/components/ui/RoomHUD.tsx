@@ -84,30 +84,35 @@ export default function RoomHUD({ room }: { room: Room }) {
             doesn't sit on screen during a quiet moment in the room, and
             fades right back in the instant the visitor moves again.
             Fade-out is slow (2s) while fade-in is quicker (1s) since
-            reappearing should feel responsive. Both pair opacity with a
-            very small scale/lift, since a smooth curve on opacity alone
-            still reads as a flat wipe — a touch of motion underneath it is
-            what actually sells "settling" in or out.
+            reappearing should feel responsive. Opacity only — a scale/lift
+            was tried here too, but Tailwind's transform utilities drive
+            translate/scale through CSS custom properties, and those don't
+            reliably interpolate across a class swap the way a direct
+            `opacity` transition does: instead of easing, the transform
+            snapped to its end value almost immediately and then just sat
+            there for the rest of the duration, reading as a sharp "pop
+            down to a smaller size" followed by a lingering pause before
+            the (correctly-eased) opacity fade actually caught up. Plain
+            opacity has no such snap, so that's all this animates now.
             The cursor hides via a hard, instantaneous switch exactly
             IDLE_FADE_OUT_MS after idle starts (CSS can't transition
             cursor: none), timed to land the moment this fade finishes —
             see the effect in Experience.tsx. That only lines up if the nav
             still LOOKS present for most of the fade: a decelerating curve
-            (fast start, slow finish — e.g. the earlier "standard"
-            ease-in-out) drops most of its opacity in the first two-thirds
-            of the duration and spends the rest crawling through values too
-            faint to see, so the nav read as already gone a good half-
-            second before the cursor actually vanished. An accelerating
-            curve (ease-in) does the opposite — it stays visibly present
-            almost the whole way through and does its drop right at the
-            end — which is what actually keeps the two in sync. Fade-in
-            keeps a decelerating curve, which suits appearing (snap in,
-            settle gently) rather than disappearing. */}
+            (fast start, slow finish — e.g. a plain ease-out) drops most of
+            its opacity in the first two-thirds of the duration and spends
+            the rest crawling through values too faint to see, so the nav
+            read as already gone a good half-second before the cursor
+            actually vanished. An accelerating curve (ease-in) does the
+            opposite — stays visibly present almost the whole way through,
+            drops right at the end — which is what keeps the two in sync.
+            Fade-in keeps a decelerating curve, which suits appearing (snap
+            in, settle gently) rather than disappearing. */}
         <div
-          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-[opacity,transform] ${
+          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ${
             isIdle
-              ? "duration-[2000ms] ease-[cubic-bezier(0.7,0,0.85,0)] pointer-events-none opacity-0 translate-y-1 scale-[0.97]"
-              : "duration-[1000ms] ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100 translate-y-0 scale-100"
+              ? "duration-[2000ms] ease-[cubic-bezier(0.7,0,0.85,0)] pointer-events-none opacity-0"
+              : "duration-[1000ms] ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100"
           }`}
         >
           <button
