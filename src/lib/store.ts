@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { ROOMS } from "@/lib/rooms";
+import { TRACKS } from "@/lib/tracks";
 
 interface ExperienceState {
   /** Has the visitor clicked past the landing gate (needed to unlock audio)? */
@@ -10,6 +11,11 @@ interface ExperienceState {
   nextRoom: () => void;
   prevRoom: () => void;
   goToRoom: (index: number) => void;
+
+  /** Which track in TRACKS is loaded — independent of roomIndex, so the
+   *  playlist can grow without needing a visual room per song. */
+  trackIndex: number;
+  nextTrack: () => void;
 
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
@@ -32,6 +38,9 @@ export const useExperience = create<ExperienceState>((set) => ({
   prevRoom: () =>
     set((s) => ({ roomIndex: (s.roomIndex - 1 + ROOMS.length) % ROOMS.length })),
   goToRoom: (index) => set({ roomIndex: ((index % ROOMS.length) + ROOMS.length) % ROOMS.length }),
+
+  trackIndex: 0,
+  nextTrack: () => set((s) => ({ trackIndex: (s.trackIndex + 1) % TRACKS.length })),
 
   isPlaying: false,
   setIsPlaying: (playing) => set({ isPlaying: playing }),

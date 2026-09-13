@@ -3,23 +3,23 @@
 import { motion } from "framer-motion";
 import { getAudioContext, primeAudioPlayback } from "@/lib/audio-engine";
 import { useExperience } from "@/lib/store";
-import { ROOMS } from "@/lib/rooms";
+import { TRACKS } from "@/lib/tracks";
 
 export default function Landing() {
   const enter = useExperience((s) => s.enter);
-  const roomIndex = useExperience((s) => s.roomIndex);
+  const trackIndex = useExperience((s) => s.trackIndex);
 
   const handleEnter = () => {
     // Must happen inside the click handler so browsers allow audio.
     getAudioContext();
     // Resuming the AudioContext above unlocks the synth-pad path, but a
-    // room with a real track plays it through an <audio> element, which
-    // has its own, separate autoplay gate. Safari revokes that gate the
-    // moment this call stack ends, so priming it here — not from the
-    // effect that normally starts playback a tick later — is what keeps
-    // the track actually playing on Safari (see primeAudioPlayback).
-    const room = ROOMS[roomIndex];
-    if (room.audioSrc) primeAudioPlayback(room.audioSrc);
+    // real track plays it through an <audio> element, which has its own,
+    // separate autoplay gate. Safari revokes that gate the moment this
+    // call stack ends, so priming it here — not from the effect that
+    // normally starts playback a tick later — is what keeps the track
+    // actually playing on Safari (see primeAudioPlayback).
+    const track = TRACKS[trackIndex];
+    if (track?.src) primeAudioPlayback(track.src);
     enter();
   };
 

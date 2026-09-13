@@ -14,8 +14,6 @@ export const ROOMS: Room[] = [
     id: "the-room",
     title: "THE ROOM",
     subtitle: "vii.fm",
-    // Test track — swap for whatever's live in the room.
-    audioSrc: "/audio/kimpton.mp3",
     scene: "cube-room",
     palette: {
       bg: "#050507",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Room } from "@/types/room";
 
 /**
  * Single shared AudioContext for the whole experience.
@@ -60,7 +59,7 @@ function getSharedAudioSource(
 
 /**
  * Call this synchronously inside the real user-gesture handler (the
- * "Enter" click) for any room with an audioSrc — resuming the
+ * "Enter" click) for whichever track loads first — resuming the
  * AudioContext there is not enough on its own. An HTMLMediaElement's
  * autoplay permission is a separate gate, and Chrome tolerates a `.play()`
  * call arriving a tick later (e.g. from a React effect scheduled off the
@@ -88,18 +87,18 @@ interface SynthVoice {
 }
 
 /**
- * Drives the audio graph for the currently active room and exposes the
+ * Drives the audio graph for the currently loaded track and exposes the
  * shared AnalyserNode so visual scenes can read frequency data in their
  * render loop.
  *
- * - If the room has an audioSrc, a single persistent <audio> element is
+ * - If a track src is given, a single persistent <audio> element is
  *   routed through the analyser.
  * - If not, a generative ambient pad (a few detuned oscillators through a
- *   slow-sweeping filter, plus a soft sub pulse) fills in so every room is
- *   audio-reactive even before you have a final track.
+ *   slow-sweeping filter, plus a soft sub pulse) fills in so the room is
+ *   still audio-reactive before there's a track loaded.
  */
 export function useAudioEngine(
-  room: Room,
+  audioSrc: string | undefined,
   isPlaying: boolean,
   volume: number
 ) {
@@ -219,7 +218,7 @@ export function useAudioEngine(
     }
   }, [volume]);
 
-  // --- react to the active room: switch between track and synth pad --------
+  // --- react to the active track: switch between track and synth pad -------
   useEffect(() => {
     const ctx = getAudioContext();
     const audioEl = audioElRef.current;
@@ -227,7 +226,7 @@ export function useAudioEngine(
     const synthGain = synthGainRef.current;
     if (!audioEl || !audioGain || !synthGain) return;
 
-    const usingTrack = Boolean(room.audioSrc);
+    const usingTrack = Boolean(audioSrc);
 
     // Compare against the element's own resolved src rather than a ref:
     // primeAudioPlayback (called synchronously from the "Enter" click, for
@@ -235,12 +234,14 @@ export function useAudioEngine(
     // src directly on the shared element before this effect ever runs.
     // Re-assigning `.src` to an identical-looking value still restarts
     // playback from the top, so checking the ref alone risked undoing the
-    // very thing priming just started.
+    // very thing priming just started. This same guard is what makes
+    // switching tracks (a new audioSrc while isPlaying stays true) load
+    // and play the new file rather than being skipped as a no-op.
     if (usingTrack) {
-      const resolved = new URL(room.audioSrc!, window.location.href).href;
+      const resolved = new URL(audioSrc!, window.location.href).href;
       if (audioEl.src !== resolved) {
-        currentSrcRef.current = room.audioSrc;
-        audioEl.src = room.audioSrc!;
+        currentSrcRef.current = audioSrc;
+        audioEl.src = audioSrc!;
       }
     }
 
@@ -255,7 +256,7 @@ export function useAudioEngine(
       synthGain.gain.setTargetAtTime(isPlaying ? 1 : 0, now, 0.6);
       audioEl.pause();
     }
-  }, [room, isPlaying]);
+  }, [audioSrc, isPlaying]);
 
   return { analyser };
 }

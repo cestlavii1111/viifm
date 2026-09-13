@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useExperience } from "@/lib/store";
 import { ROOMS } from "@/lib/rooms";
+import { TRACKS } from "@/lib/tracks";
 import { useAudioEngine } from "@/lib/audio-engine";
 import Landing from "@/components/ui/Landing";
 import RoomHUD from "@/components/ui/RoomHUD";
@@ -11,13 +12,15 @@ import RoomCanvas from "@/components/RoomCanvas";
 export default function Experience() {
   const hasEntered = useExperience((s) => s.hasEntered);
   const roomIndex = useExperience((s) => s.roomIndex);
+  const trackIndex = useExperience((s) => s.trackIndex);
   const isPlaying = useExperience((s) => s.isPlaying);
   const volume = useExperience((s) => s.volume);
 
   const room = ROOMS[roomIndex];
+  const track = TRACKS[trackIndex];
   // Always call the hook (even pre-entry) so the audio graph is ready the
   // instant the visitor clicks "Enter" — isPlaying stays false until then.
-  const { analyser } = useAudioEngine(room, hasEntered && isPlaying, volume);
+  const { analyser } = useAudioEngine(track?.src, hasEntered && isPlaying, volume);
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-black text-white">
