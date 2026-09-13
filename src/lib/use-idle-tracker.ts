@@ -10,7 +10,7 @@ import { useExperience } from "@/lib/store";
  * does this, gated to hasEntered) — consumers just read `isIdle` from the
  * store rather than each running their own listeners.
  */
-export function useIdleTracker(enabled: boolean, timeoutMs = 2200) {
+export function useIdleTracker(enabled: boolean, timeoutMs = 2000) {
   const setIdle = useExperience((s) => s.setIdle);
 
   useEffect(() => {
