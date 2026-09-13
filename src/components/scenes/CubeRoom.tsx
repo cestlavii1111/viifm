@@ -323,7 +323,12 @@ export default function CubeRoom({ room }: { room: Room }) {
     if (normalized.bass > 0.8 && t - lastBassCueTime.current > 0.9) {
       lastBassCueTime.current = t;
       hueDrift.current += 30 + Math.random() * 90;
-      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 1);
+      // Pushed past 1 (was capped at 1) — the shader's own strength/amp
+      // curve already saturates gently, so a bigger raw target here mostly
+      // buys a faster, wider sweep rather than blowing out brightness,
+      // which is what makes a bass drop read as unmistakably the "big"
+      // cue rather than just a slightly-brighter version of a snare hit.
+      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 1.3);
       // Re-roll which walls the cascade favors on the biggest cue (bass),
       // rather than every cue — narrowing the shape on every hi-hat would
       // make the room feel twitchy rather than just varied over time.
@@ -332,24 +337,28 @@ export default function CubeRoom({ room }: { room: Room }) {
     if (normalized.mid > 0.82 && t - lastMidCueTime.current > 0.6) {
       lastMidCueTime.current = t;
       hueDrift.current += 15 + Math.random() * 45;
-      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 0.6);
+      cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 0.65);
     }
     if (normalized.treble > 0.85 && t - lastTrebleCueTime.current > 0.35) {
       lastTrebleCueTime.current = t;
       hueDrift.current += 8 + Math.random() * 20;
       cascadePulseTarget.current = Math.max(cascadePulseTarget.current, 0.35);
     }
-    // Continuous attack/release toward the cue target. Eased further this
-    // round — the previous 6.5 attack rate still reached ~90% of full
-    // strength in under half a second, which read as a quick snap rather
-    // than a build once combined with the shader's own softened glow curve.
-    // Slowing both the rise and the fall gives the pulse (and everything it
-    // drives — cascade speed/strength/width) a genuinely gradual swell in
-    // and settle out instead of a sharp attack with a merely-slower decay.
-    const pulseRate = cascadePulseTarget.current > cascadePulse.current ? 4.2 : 1.1;
+    // Attack/release toward the cue target — sped up on both ends this
+    // round (rise 4.2 -> 5.8, fall 1.1 -> 2.4, target decay half-life
+    // 0.55s -> 0.3s). The previous, slower pair was tuned for a smooth
+    // swell, but combined with cascadeSpeed/Strength below leaning heavily
+    // on the *continuous* normalized.overall term (not this pulse), the
+    // net effect was a cascade that stayed almost constantly lit and
+    // moving regardless of what the music was actually doing — never
+    // really settling between hits, so distinct cues barely read as
+    // distinct. Snapping this pulse up fast and letting it fall back down
+    // hard between hits is what makes each one read as its own event
+    // ("choreographed") instead of one continuous wash ("too constant").
+    const pulseRate = cascadePulseTarget.current > cascadePulse.current ? 5.8 : 2.4;
     cascadePulse.current +=
       (cascadePulseTarget.current - cascadePulse.current) * Math.min(1, delta * pulseRate);
-    cascadePulseTarget.current *= Math.pow(0.5, delta / 0.55);
+    cascadePulseTarget.current *= Math.pow(0.5, delta / 0.3);
 
     // Ease the wall mask toward its (possibly just re-rolled) target too,
     // so switching which walls the cascade favors fades in rather than
@@ -367,21 +376,28 @@ export default function CubeRoom({ room }: { room: Room }) {
     // back wall out toward the viewer once every 1/cascadeSpeed seconds
     // (see the shader), lighting the whole cross-section — ceiling,
     // floor, and both side walls — together at each moment rather than
-    // one column at a time. Baseline speed/strength sit close to zero now
-    // (rather than a third-or-more of their max, which made the cascade
-    // loop at roughly the same rate and brightness no matter what was
-    // playing) — quiet passages let it nearly stall, a held breath, so
-    // loud ones read as a real surge instead of a modest bump on a
-    // cascade that was already constantly running.
-    const cascadeSpeed = 0.04 + normalized.overall * 0.85 + cascadePulse.current * 1.4;
+    // one column at a time. Driven almost entirely by cascadePulse now
+    // (the discrete, cue-triggered envelope above) rather than the
+    // continuous normalized.overall loudness it leaned on before —
+    // normalized.overall stays mid-range fairly often (it's a rolling
+    // auto-gain normalization, not a raw level), so weighting it this
+    // heavily kept the cascade almost always moving and glowing at a
+    // similar rate/brightness no matter what was actually playing, which
+    // is exactly the "too constant" read. A tiny idle creep is kept so it
+    // never looks fully frozen/broken during a real silence, but the real
+    // sweeps — the ones that should feel choreographed — now only happen
+    // when a bass/mid/treble cue actually fires.
+    const IDLE_CASCADE_SPEED = 0.02;
+    const cascadeSpeed = IDLE_CASCADE_SPEED + cascadePulse.current * 2.6;
     cascadePhase.current += delta * cascadeSpeed;
+    const IDLE_CASCADE_STRENGTH = 0.015;
     const cascadeStrength =
-      Math.min(0.55, 0.03 + Math.pow(normalized.overall, 1.6) * 0.32 + cascadePulse.current * 0.32) *
+      Math.min(0.62, IDLE_CASCADE_STRENGTH + Math.pow(cascadePulse.current, 1.1) * 0.58) *
       liveness.current;
     // The ripple's own width now swells on a hit too — not just brighter,
     // but visibly thicker as it passes — so a cue reads as more than a
     // color/speed change layered on an otherwise-identical band.
-    const cascadeWidth = 0.13 + cascadePulse.current * 0.24 + normalized.overall * 0.06;
+    const cascadeWidth = 0.1 + cascadePulse.current * 0.34;
 
     // Panel widths per second the tunnel's pattern flows toward the
     // viewer — this is the "endless forward flight" illusion (see the
