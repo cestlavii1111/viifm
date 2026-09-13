@@ -55,3 +55,18 @@ body {
   font-family: "DotGothic16", monospace;
   letter-spacing: 0.04em;
 }
+
+/* News-ticker style loop for the nav pill's track title when it's too long
+   to fit its fixed-width slot. The row this animates contains the title
+   rendered TWICE back to back (see MarqueeText in RoomHUD.tsx); translating
+   by exactly -50% therefore slides the first copy completely out of view
+   at the exact moment the second copy lands in the spot the first one
+   started in, so the loop point is seamless with no visible reset/snap. */
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
