@@ -19,6 +19,7 @@ export default function Experience() {
   const isPlaying = useExperience((s) => s.isPlaying);
   const volume = useExperience((s) => s.volume);
   const isIdle = useExperience((s) => s.isIdle);
+  const nextTrack = useExperience((s) => s.nextTrack);
   // The OS cursor can't fade — it's only ever fully shown or fully hidden —
   // so to make it disappear at the same moment the nav finishes fading
   // out (rather than vanishing instantly while the nav is still visibly
@@ -30,7 +31,12 @@ export default function Experience() {
   const track = TRACKS[trackIndex];
   // Always call the hook (even pre-entry) so the audio graph is ready the
   // instant the visitor clicks "Enter" — isPlaying stays false until then.
-  const { analyser } = useAudioEngine(track?.src, hasEntered && isPlaying, volume);
+  const { analyser } = useAudioEngine(
+    track?.src,
+    hasEntered && isPlaying,
+    volume,
+    nextTrack
+  );
   // Only watch for idleness once the visitor is actually inside the room —
   // no reason to hide the cursor over the landing gate.
   useIdleTracker(hasEntered);

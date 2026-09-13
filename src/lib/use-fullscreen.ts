@@ -30,7 +30,12 @@ function getFullscreenElement(): Element | null {
  * iPhone Safari is the one mainstream browser with no support for this API
  * at all on arbitrary elements (only iPadOS and desktop Safari implement
  * even the webkit-prefixed version) — isSupported reflects that so the
- * button can hide itself there rather than sit around doing nothing.
+ * button can hide itself there rather than sit around doing nothing. The
+ * one real chrome-less mode iOS Safari does offer instead is launching
+ * from a Home Screen icon (see the appleWebApp metadata in layout.tsx) —
+ * a page already running that way reports navigator.standalone === true
+ * and has nothing left for this toggle to do, so isSupported is false
+ * there too.
  */
 export function useFullscreen() {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -38,7 +43,14 @@ export function useFullscreen() {
 
   useEffect(() => {
     const doc = document as WebkitDocument;
-    setIsSupported(Boolean(document.fullscreenEnabled ?? doc.webkitFullscreenEnabled));
+    const nav = navigator as Navigator & { standalone?: boolean };
+    const alreadyStandalone =
+      nav.standalone === true ||
+      window.matchMedia?.("(display-mode: standalone)").matches === true;
+    setIsSupported(
+      !alreadyStandalone &&
+        Boolean(document.fullscreenEnabled ?? doc.webkitFullscreenEnabled)
+    );
 
     const onChange = () => setIsFullscreen(getFullscreenElement() !== null);
     onChange();

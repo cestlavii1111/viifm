@@ -5,6 +5,19 @@ export const metadata: Metadata = {
   title: "vii.fm — cinema for your ears",
   description:
     "An audio-visual digital garden: an evolving installation space of interactive rooms, each its own performance.",
+  // iPhone/iPad Safari has no Fullscreen API for arbitrary page elements —
+  // there's no JS call that can hide its browser chrome the way
+  // requestFullscreen() does on desktop and on Android Chrome, which is
+  // why the in-room fullscreen button (see use-fullscreen.ts) doesn't show
+  // there. The one real chrome-less mode iOS does offer is launching from
+  // an icon added to the Home Screen: appleWebApp below is what makes that
+  // launch open as a true standalone, no-browser-UI window instead of a
+  // normal Safari tab.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "vii.fm",
+  },
 };
 
 // With no viewport meta at all (the previous state of this file), mobile

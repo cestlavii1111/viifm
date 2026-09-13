@@ -90,7 +90,9 @@ export default function RoomHUD({ room }: { room: Room }) {
               // room-dots button above, which gets it from its own
               // wrapper — this one doesn't share that wrapper, so it needs
               // it directly instead of leaning on the parent chain.
-              className={`pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/50 transition-[opacity,color,border-color] will-change-opacity hover:border-white/50 hover:text-white ${idleFadeClass}`}
+              // NOTE: no will-change-opacity here — see the nav pill's
+              // comment below for why that was removed.
+              className={`pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/50 transition-[opacity,color,border-color] hover:border-white/50 hover:text-white ${idleFadeClass}`}
             >
               {isFullscreen ? (
                 <svg
@@ -174,17 +176,20 @@ export default function RoomHUD({ room }: { room: Room }) {
             Fade-in keeps a decelerating curve, which suits appearing (snap
             in, settle gently) rather than disappearing. */}
         <div
-          // will-change-opacity forces this onto its own compositor layer
-          // for the life of the fade. An HTML element with a plain opacity
-          // transition sitting directly above a WebGL canvas that's
-          // repainting every frame (this one is, at 60fps) can, on some
-          // GPU/driver/compositor combinations, have its own repaint
-          // silently skipped or coalesced away — the DOM ends up correctly
-          // at opacity: 0, but the last painted frame on screen never
-          // actually gets replaced, so it reads as "stuck visible" even
-          // though nothing in the app logic is wrong. Promoting it to its
-          // own layer up front is the standard fix for that class of bug.
-          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity will-change-opacity ${idleFadeClass}`}
+          // NOTE: this used to also carry `will-change-opacity`, added on
+          // a theory that forcing this semi-transparent (bg-black/60)
+          // panel onto its own compositor layer would prevent a "stuck
+          // visible" repaint bug above the WebGL canvas. In practice it
+          // caused a different, worse artifact on desktop: the panel would
+          // flash from semi-transparent to fully solid black and back
+          // before settling, because promoting a translucent element to
+          // its own GPU layer can make some desktop GPU/compositor
+          // combinations composite its alpha incorrectly mid-transition.
+          // That never showed up on mobile, which pointed straight at
+          // will-change as the cause. Removed — a plain opacity
+          // transition with no forced layer promotion is what's reliable
+          // on both desktop and mobile here.
+          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ${idleFadeClass}`}
         >
           <button
             onClick={() => setIsPlaying(!isPlaying)}

@@ -104,7 +104,10 @@ const TRACK_FADE_SECONDS = 0.4;
  * - If a track src is given, its fully-decoded AudioBuffer is played
  *   through a fresh AudioBufferSourceNode each time (a source node can
  *   only ever be started once — see stopCurrentSource for how pause/
- *   resume and track-switching work around that).
+ *   resume and track-switching work around that). Each track plays once
+ *   (no looping) and calls the optional onTrackEnd callback when it
+ *   finishes naturally, so the caller can advance to the next track in the
+ *   playlist instead of the same one repeating forever.
  * - If not, a generative ambient pad (a few detuned oscillators through a
  *   slow-sweeping filter, plus a soft sub pulse) fills in so the room is
  *   still audio-reactive before there's a track loaded.
@@ -112,9 +115,16 @@ const TRACK_FADE_SECONDS = 0.4;
 export function useAudioEngine(
   audioSrc: string | undefined,
   isPlaying: boolean,
-  volume: number
+  volume: number,
+  onTrackEnd?: () => void
 ) {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  // Always call the latest onTrackEnd from inside the source's `onended`
+  // handler without needing to re-run the track-switching effect (and
+  // therefore re-subscribe) every time the caller passes a fresh function
+  // reference.
+  const onTrackEndRef = useRef(onTrackEnd);
+  onTrackEndRef.current = onTrackEnd;
 
   const masterGainRef = useRef<GainNode | null>(null);
   const audioGainRef = useRef<GainNode | null>(null);
@@ -131,6 +141,12 @@ export function useAudioEngine(
   const offsetRef = useRef(0);
   const startedAtRef = useRef(0);
   const pendingStopRef = useRef<number | undefined>(undefined);
+  // AudioBufferSourceNode fires `ended` both when a track finishes playing
+  // out naturally AND when we call .stop() on it ourselves (pausing,
+  // switching tracks, or unmounting). Only the former should advance to
+  // the next track — this flag is set right before every deliberate
+  // .stop() so the handler can tell the two apart.
+  const intentionalStopRef = useRef(false);
 
   // --- one-time graph setup -------------------------------------------------
   useEffect(() => {
@@ -216,6 +232,7 @@ export function useAudioEngine(
         /* already stopped */
       }
       if (sourceRef.current) {
+        intentionalStopRef.current = true;
         try {
           sourceRef.current.stop();
         } catch {
@@ -263,6 +280,7 @@ export function useAudioEngine(
       const source = sourceRef.current;
       if (source) {
         offsetRef.current += ctx.currentTime - startedAtRef.current;
+        intentionalStopRef.current = true;
         try {
           source.stop();
         } catch {
@@ -303,7 +321,23 @@ export function useAudioEngine(
             if (cancelled || currentSrcRef.current !== audioSrc || sourceRef.current) return;
             const source = ctx.createBufferSource();
             source.buffer = buffer;
-            source.loop = true;
+            // Play through once and advance to the next track rather than
+            // looping the same one forever. `ended` also fires for our own
+            // deliberate .stop() calls (pause, track switch, unmount) —
+            // intentionalStopRef distinguishes those from a real, natural
+            // end-of-track so only the latter calls onTrackEnd.
+            source.loop = false;
+            source.onended = () => {
+              if (intentionalStopRef.current) {
+                intentionalStopRef.current = false;
+                return;
+              }
+              if (sourceRef.current === source) {
+                sourceRef.current = null;
+              }
+              offsetRef.current = 0;
+              onTrackEndRef.current?.();
+            };
             source.connect(audioGain);
             const offset = buffer.duration > 0 ? offsetRef.current % buffer.duration : 0;
             source.start(0, offset);

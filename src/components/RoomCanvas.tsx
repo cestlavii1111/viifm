@@ -2,12 +2,22 @@
 
 import { Canvas } from "@react-three/fiber";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
-import { Suspense, useCallback } from "react";
+import { Suspense, useCallback, useRef } from "react";
 import type { Room } from "@/types/room";
 import { SCENES } from "@/lib/rooms";
 import { AnalyserProvider } from "@/lib/audio-context";
 import { useExperience } from "@/lib/store";
 import { CAMERA_BASE_Z } from "@/components/scenes/CubeRoom";
+
+// Recenter gesture thresholds — a manual double-click/double-tap detector
+// rather than the native `dblclick` event. `dblclick` doesn't reliably
+// synthesize from touch here because this wrapper sets touch-action: none
+// (see below) to stop iOS's own scroll/bounce gesture, and some mobile
+// browsers skip synthesizing dblclick once a listener has claimed touch
+// handling that way. Tracking pointerdown timing + distance ourselves
+// works identically for mouse and touch.
+const DOUBLE_TAP_MAX_MS = 350;
+const DOUBLE_TAP_MAX_PX = 24;
 
 export default function RoomCanvas({
   room,
@@ -19,11 +29,37 @@ export default function RoomCanvas({
   const setPointer = useExperience((s) => s.setPointer);
   const SceneComponent = SCENES[room.scene];
 
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const x = e.clientX / window.innerWidth;
       const y = e.clientY / window.innerHeight;
       setPointer(x, y);
+    },
+    [setPointer]
+  );
+
+  // Double-click (desktop) / double-tap (mobile) recenters the camera
+  // straight down the tunnel. CubeRoom already eases camera.rotation
+  // toward a target derived from the store's `pointer` value every frame
+  // (see its useFrame), so recentering is just resetting pointer back to
+  // its dead-center default (0.5, 0.5) — the existing per-frame easing
+  // smoothly carries the camera back on its own, no new animation needed.
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const now = performance.now();
+      const last = lastTapRef.current;
+      if (
+        last &&
+        now - last.time <= DOUBLE_TAP_MAX_MS &&
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) <= DOUBLE_TAP_MAX_PX
+      ) {
+        setPointer(0.5, 0.5);
+        lastTapRef.current = null;
+      } else {
+        lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+      }
     },
     [setPointer]
   );
@@ -36,7 +72,11 @@ export default function RoomCanvas({
     // native scroll before that ever kicks in. Scoped to this wrapper
     // only (not the whole page) so the volume slider in RoomHUD, which
     // sits in its own layer above this, keeps its normal touch dragging.
-    <div className="absolute inset-0 touch-none" onPointerMove={handlePointerMove}>
+    <div
+      className="absolute inset-0 touch-none"
+      onPointerMove={handlePointerMove}
+      onPointerDown={handlePointerDown}
+    >
       <AnalyserProvider value={analyser}>
         <Canvas
           // Starts just inside the tunnel's front opening — CubeRoom then
