@@ -234,9 +234,10 @@ export default function CubeRoom({ room }: { room: Room }) {
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
       // headroom for the colored light (washes/hot-spot/tunnel) so those
-      // don't blow out. 0.68 was tuned for the old always-colored surface;
-      // at that level it reads as dull grey instead of white.
-      uExposure: { value: 0.92 },
+      // don't blow out. Raised from 0.92 to 1.0 alongside the saturation
+      // increases in this same round — at 0.92 the extra saturation still
+      // read a touch dim/muted rather than genuinely vivid.
+      uExposure: { value: 1.0 },
     }),
     []
   );
@@ -412,13 +413,15 @@ export default function CubeRoom({ room }: { room: Room }) {
 
         const hue = (wall.hue + hueDrift.current * 0.6 + bands.treble * 10) % 360;
         const color = new THREE.Color();
-        // Pushed saturation up and lightness down from the original
-        // 0.5/0.58 — that combination read as pastel/washed-out once mixed
-        // with the shader's own white-leaning blends downstream. This is
-        // the raw "peak" hue the shader then dials up further toward the
-        // vanishing point (see satDepth in the fragment shader) and pulls
-        // back toward pastel near the viewer.
-        color.setHSL(hue / 360, 0.8, 0.5);
+        // Pushed saturation up further (0.8 -> 0.94) — even at 0.8 the
+        // walls still read as slightly muted once mixed with the shader's
+        // own white-leaning blends downstream (see satDepth below, and
+        // ambient's mix-toward-white), so the raw peak hue needed more
+        // headroom to still land as a genuinely vivid color once diluted.
+        // This is the raw "peak" hue the shader then dials up further
+        // toward the vanishing point and pulls back toward pastel near the
+        // viewer.
+        color.setHSL(hue / 360, 0.94, 0.5);
 
         const capitalized = wall.id.charAt(0).toUpperCase() + wall.id.slice(1);
         const colorUniform = uniforms[`uColor${capitalized}` as keyof typeof uniforms] as {

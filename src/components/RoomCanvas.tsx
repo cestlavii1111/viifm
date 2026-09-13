@@ -101,16 +101,21 @@ export default function RoomCanvas({
           </Suspense>
           <EffectComposer>
             {/* Bloom's own soft glow/haze is what actually reads as the
-                room's "frosted glass" softness in the screenshots — the
-                walls themselves render sharp; it's this pass washing over
-                everything that blurs it. Brought down 25% (0.45 -> 0.3375)
-                to ease that off without removing it outright. */}
-            <Bloom
-              intensity={0.3375}
-              luminanceThreshold={0.85}
-              luminanceSmoothing={0.35}
-              mipmapBlur
-            />
+                room's "frosted glass" softness/desaturation — the walls
+                themselves render sharp and vivid; it's this pass washing a
+                soft white haze over everything that mutes and blurs the
+                color underneath. Brought down further this round (0.3375
+                -> 0.22) and the threshold raised (0.85 -> 0.92) so bloom
+                only catches genuinely bright highlights (the cascade ripple,
+                hot spots) instead of washing over the ambient wall color
+                too — that ambient wash sitting well below the old 0.85
+                threshold was still picking up enough bloom to read as a
+                frosted haze over the whole room. mipmapBlur (a wide,
+                multi-mip-level blur meant for soft cinematic glow) is
+                dropped in favor of the plain default kernel, which spreads
+                far less, so what bloom remains stays a tight highlight
+                rather than a haze across the whole surface. */}
+            <Bloom intensity={0.22} luminanceThreshold={0.92} luminanceSmoothing={0.2} />
             <Vignette eskil={false} offset={0.4} darkness={0.4} />
           </EffectComposer>
         </Canvas>

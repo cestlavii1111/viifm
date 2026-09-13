@@ -196,14 +196,25 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // dimmer and only build toward full color as intensity really climbs —
     // a straight linear scale kept the room looking similarly colorful
     // most of the time, which read as static rather than responsive.
-    float ambient = clamp(pow(intensity, 1.6) * 1.35, 0.0, 0.92);
+    // Exponent eased (1.6 -> 1.2) and scale raised (1.45 -> 1.7, cap
+    // 0.97 -> 1.0) — at 1.6/1.45 a typical, moderately loud passage (not
+    // just the rare loudest peak) still only reached roughly half
+    // coverage, which combined with satDepth's own dilution below left
+    // most of what's actually on screen most of the time (the near-viewer
+    // walls, which fill most of the frame) reading as pastel rather than
+    // "mostly colorful" the way the room is meant to.
+    float ambient = clamp(pow(intensity, 1.2) * 1.7, 0.0, 1.0);
     // Saturation itself now deepens toward the vanishing point instead of
     // staying fixed everywhere — a flat 0.75 mix-toward-white read as
     // pastel/washed-out across the whole tunnel rather than matching the
     // reference mockup's richly saturated core fading out to soft color at
     // the viewer's end. depthN is 0 at the back (the point) and 1 at the
     // viewer, so this pushes hard toward full color as depthN falls.
-    float satDepth = mix(0.55, 0.98, 1.0 - depthN);
+    // Floor raised twice now (0.55 -> 0.78 -> 0.9) — even "soft color near
+    // the viewer" was still reading as washed-out/pastel rather than just
+    // gently softer than the tunnel's saturated core, and the near-viewer
+    // walls are most of what's actually on screen at any given moment.
+    float satDepth = mix(0.9, 1.0, 1.0 - depthN);
     vec3 ambientColor = mix(vec3(1.0), peakColor, satDepth);
     vec3 color = mix(base, ambientColor, ambient);
 
@@ -278,7 +289,9 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
 
     // Global exposure — pulls everything back from the white clip point so
     // loud/bright moments still have headroom to read as *brighter*
-    // instead of just flattening into solid white.
+    // instead of just flattening into solid white. Nudged back up
+    // (0.92 -> 1.0) alongside the saturation increases above — at 0.92 the
+    // extra saturation still read a touch dim/muted rather than vivid.
     color *= uExposure;
 
     gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
