@@ -60,8 +60,13 @@ export default function RoomCanvas({
             <SceneComponent room={room} />
           </Suspense>
           <EffectComposer>
+            {/* Bloom's own soft glow/haze is what actually reads as the
+                room's "frosted glass" softness in the screenshots — the
+                walls themselves render sharp; it's this pass washing over
+                everything that blurs it. Brought down 25% (0.45 -> 0.3375)
+                to ease that off without removing it outright. */}
             <Bloom
-              intensity={0.45}
+              intensity={0.3375}
               luminanceThreshold={0.85}
               luminanceSmoothing={0.35}
               mipmapBlur

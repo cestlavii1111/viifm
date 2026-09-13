@@ -5,6 +5,7 @@ import type { Room } from "@/types/room";
 import { useExperience } from "@/lib/store";
 import { ROOMS } from "@/lib/rooms";
 import { TRACKS } from "@/lib/tracks";
+import { useFullscreen } from "@/lib/use-fullscreen";
 
 export default function RoomHUD({ room }: { room: Room }) {
   const nextRoom = useExperience((s) => s.nextRoom);
@@ -20,6 +21,16 @@ export default function RoomHUD({ room }: { room: Room }) {
   const isIdle = useExperience((s) => s.isIdle);
   const hasMultipleRooms = ROOMS.length > 1;
   const track = TRACKS[trackIndex];
+  const { isFullscreen, isSupported: fullscreenSupported, toggle: toggleFullscreen } =
+    useFullscreen();
+
+  // Same fade timing/curves as the audio nav below (see its comment) —
+  // one shared idea for all of this "minimal chrome" UI: fade out slowly
+  // and stay visible almost the whole way through so it disappears in
+  // step with the cursor, fade back in quickly once something moves.
+  const idleFadeClass = isIdle
+    ? "duration-[2000ms] ease-[cubic-bezier(0.7,0,0.85,0)] pointer-events-none opacity-0"
+    : "duration-[1000ms] ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100";
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-6 sm:p-10">
@@ -45,22 +56,76 @@ export default function RoomHUD({ room }: { room: Room }) {
           </motion.div>
         </AnimatePresence>
 
-        {hasMultipleRooms && (
-          <div className="pointer-events-auto flex gap-1.5">
-            {ROOMS.map((r, i) => (
-              <button
-                key={r.id}
-                onClick={() => goToRoom(i)}
-                aria-label={`Go to ${r.title}`}
-                className="h-1.5 w-6 rounded-full transition-all"
-                style={{
-                  backgroundColor:
-                    i === roomIndex ? room.palette.accent : "rgba(255,255,255,0.2)",
-                }}
-              />
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {hasMultipleRooms && (
+            <div className="pointer-events-auto flex gap-1.5">
+              {ROOMS.map((r, i) => (
+                <button
+                  key={r.id}
+                  onClick={() => goToRoom(i)}
+                  aria-label={`Go to ${r.title}`}
+                  className="h-1.5 w-6 rounded-full transition-all"
+                  style={{
+                    backgroundColor:
+                      i === roomIndex ? room.palette.accent : "rgba(255,255,255,0.2)",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Fullscreen toggle — deliberately small and low-contrast so it
+              reads as a corner affordance rather than a headline control,
+              and fades with the rest of the idle chrome (see idleFadeClass
+              above) rather than sitting there permanently. Skipped
+              entirely on browsers with no Fullscreen API for arbitrary
+              elements (iPhone Safari, notably) rather than shown as a
+              button that would just silently do nothing there. */}
+          {fullscreenSupported && (
+            <button
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              // pointer-events-auto here (rather than relying only on the
+              // one idleFadeClass already contributes) matches the
+              // room-dots button above, which gets it from its own
+              // wrapper — this one doesn't share that wrapper, so it needs
+              // it directly instead of leaning on the parent chain.
+              className={`pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/50 transition-[opacity,color,border-color] hover:border-white/50 hover:text-white ${idleFadeClass}`}
+            >
+              {isFullscreen ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                >
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                  <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                  <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                  <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+                </svg>
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                >
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                  <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                  <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                  <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* bottom: transport controls */}
@@ -109,11 +174,7 @@ export default function RoomHUD({ room }: { room: Room }) {
             Fade-in keeps a decelerating curve, which suits appearing (snap
             in, settle gently) rather than disappearing. */}
         <div
-          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ${
-            isIdle
-              ? "duration-[2000ms] ease-[cubic-bezier(0.7,0,0.85,0)] pointer-events-none opacity-0"
-              : "duration-[1000ms] ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto opacity-100"
-          }`}
+          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ${idleFadeClass}`}
         >
           <button
             onClick={() => setIsPlaying(!isPlaying)}
