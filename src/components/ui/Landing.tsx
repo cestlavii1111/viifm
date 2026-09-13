@@ -43,7 +43,7 @@ export default function Landing() {
         transition={{ duration: 1.2, delay: 0.3 }}
         className="mb-10 max-w-md text-center text-2xl font-light tracking-wide text-white/90"
       >
-        a cinema for your ears
+        cinema for your ears
       </motion.h1>
       <motion.button
         initial={{ opacity: 0 }}

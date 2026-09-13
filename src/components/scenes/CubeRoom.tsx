@@ -102,8 +102,16 @@ export default function CubeRoom({ room }: { room: Room }) {
   const analyser = useAnalyser();
   const bufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const pointer = useExperience((s) => s.pointer);
+  const isPlaying = useExperience((s) => s.isPlaying);
   const { camera } = useThree();
 
+  // How "live" the room is right now — 1 while music plays, easing down to
+  // 0 (pure white, no color at all) once it's paused. Without this, the
+  // room never actually goes fully white on pause: each wall has its own
+  // slow "breathing" sine baked in below (ownBreath) that keeps a faint
+  // tint alive regardless of audio, and the cascade has its own small
+  // baseline strength — both are silenced by scaling them with this.
+  const liveness = useRef(1);
   const sharedEnvelope = useRef(0.15);
   const wallEnvelopes = useRef<Record<WallId, number>>({
     back: 0.15,
@@ -188,6 +196,17 @@ export default function CubeRoom({ room }: { room: Room }) {
   }, [room.palette]);
 
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const fogRef = useRef<THREE.Fog | null>(null);
+  // The room's actual base color (used by the shader at rest) is a clean
+  // neutral vec3(0.96) — but fog was still always tinting the far end of
+  // the tunnel toward room.palette.bg (a colored background), completely
+  // independent of liveness/intensity. That's what left a faint tint
+  // visible at the vanishing point even once every audio-driven term had
+  // correctly eased all the way to zero: the fog color itself was never
+  // part of that gating. Eased alongside liveness so paused/silent rooms
+  // fade all the way to a neutral fog too, not just a neutral wall base.
+  const fogColorLive = useMemo(() => new THREE.Color(room.palette.bg), [room.palette.bg]);
+  const fogColorRest = useMemo(() => new THREE.Color(0.96, 0.96, 0.96), []);
 
   const uniforms = useMemo(
     () => ({
@@ -230,6 +249,25 @@ export default function CubeRoom({ room }: { room: Room }) {
     }
 
     const t = state.clock.elapsedTime;
+
+    // Ease toward fully live (1) while playing, or all the way down to
+    // silent/white (0) once paused. Slower on the way down ("slowly fade
+    // all the way to white") than on the way back up, so resuming feels
+    // prompt but stopping settles gently.
+    const livenessTarget = isPlaying ? 1 : 0;
+    const livenessRate = livenessTarget > liveness.current ? 1.1 : 0.6;
+    liveness.current += (livenessTarget - liveness.current) * Math.min(1, delta * livenessRate);
+    // This kind of ease-toward-target only ever *approaches* its target —
+    // it mathematically never quite reaches exactly 0, which with Bloom's
+    // own tendency to pick out and haze even a faint residual color left
+    // the room visibly not-quite-white long after pausing. Snapping the
+    // last sliver closes that gap so it actually settles to pure white.
+    if (livenessTarget === 0 && liveness.current < 0.01) liveness.current = 0;
+    if (livenessTarget === 1 && liveness.current > 0.995) liveness.current = 1;
+
+    if (fogRef.current) {
+      fogRef.current.color.copy(fogColorRest).lerp(fogColorLive, liveness.current);
+    }
 
     // A slow, independent "breathing" cycle so the room stays alive even
     // during quiet passages — trance rooms pulse whether or not anything
@@ -336,10 +374,9 @@ export default function CubeRoom({ room }: { room: Room }) {
     // cascade that was already constantly running.
     const cascadeSpeed = 0.04 + normalized.overall * 0.85 + cascadePulse.current * 1.4;
     cascadePhase.current += delta * cascadeSpeed;
-    const cascadeStrength = Math.min(
-      0.55,
-      0.03 + Math.pow(normalized.overall, 1.6) * 0.32 + cascadePulse.current * 0.32
-    );
+    const cascadeStrength =
+      Math.min(0.55, 0.03 + Math.pow(normalized.overall, 1.6) * 0.32 + cascadePulse.current * 0.32) *
+      liveness.current;
     // The ripple's own width now swells on a hit too — not just brighter,
     // but visibly thicker as it passes — so a cue reads as more than a
     // color/speed change layered on an otherwise-identical band.
@@ -367,7 +404,11 @@ export default function CubeRoom({ room }: { room: Room }) {
           sharedEnvelope.current * (1 - wall.variance) +
           nextEnv * wall.variance +
           ownBreath * 0.12;
-        const intensity = Math.min(1, Math.max(0, combined));
+        // Scaled by liveness so pausing actually settles the room to pure
+        // white — ownBreath above has no dependency on audio at all, so
+        // without this the room kept a faint, endless tint even in
+        // silence.
+        const intensity = Math.min(1, Math.max(0, combined)) * liveness.current;
 
         const hue = (wall.hue + hueDrift.current * 0.6 + bands.treble * 10) % 360;
         const color = new THREE.Color();
@@ -429,7 +470,7 @@ export default function CubeRoom({ room }: { room: Room }) {
           cross-section (HALF) — the old values were tuned for a room whose
           depth and width were the same, so they barely faded anything
           across this much longer tunnel. */}
-      <fog attach="fog" args={[room.palette.bg, DEPTH * 0.5, DEPTH * 1.9]} />
+      <fog ref={fogRef} attach="fog" args={[room.palette.bg, DEPTH * 0.5, DEPTH * 1.9]} />
       <mesh geometry={geometry}>
         <shaderMaterial
           ref={materialRef}

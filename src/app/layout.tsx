@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "vii.fm — a cinema for your ears",
+  title: "vii.fm — cinema for your ears",
   description:
     "An audio-visual digital garden: an evolving installation space of interactive rooms, each its own performance.",
 };

@@ -3,6 +3,15 @@
 import { useEffect } from "react";
 import { useExperience } from "@/lib/store";
 
+/** How long the pointer/keyboard can sit still before things fade away. */
+export const IDLE_TIMEOUT_MS = 5000;
+/** How long the cursor/nav take to fade out once idle — slow and eased,
+ *  not a hard cut. */
+export const IDLE_FADE_OUT_MS = 2000;
+/** How long they take to fade back in on the next move — snappier than
+ *  the fade-out, since reappearing should feel responsive. */
+export const IDLE_FADE_IN_MS = 1000;
+
 /**
  * Watches for pointer/keyboard/touch activity anywhere on the page and
  * flips the shared `isIdle` flag on after a few seconds of silence,
@@ -10,7 +19,7 @@ import { useExperience } from "@/lib/store";
  * does this, gated to hasEntered) — consumers just read `isIdle` from the
  * store rather than each running their own listeners.
  */
-export function useIdleTracker(enabled: boolean, timeoutMs = 2000) {
+export function useIdleTracker(enabled: boolean, timeoutMs = IDLE_TIMEOUT_MS) {
   const setIdle = useExperience((s) => s.setIdle);
 
   useEffect(() => {
