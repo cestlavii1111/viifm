@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useExperience } from "@/lib/store";
 
 /** How long the pointer/keyboard can sit still before things fade away. */
-export const IDLE_TIMEOUT_MS = 5000;
+export const IDLE_TIMEOUT_MS = 3000;
 /** How long the cursor/nav take to fade out once idle — slow and eased,
  *  not a hard cut. */
 export const IDLE_FADE_OUT_MS = 2000;

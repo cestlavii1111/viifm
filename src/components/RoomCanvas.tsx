@@ -29,7 +29,14 @@ export default function RoomCanvas({
   );
 
   return (
-    <div className="absolute inset-0" onPointerMove={handlePointerMove}>
+    // touch-action: none keeps a finger-drag over the empty tunnel from
+    // triggering iOS's own scroll/bounce gesture — html/body already stop
+    // the page itself from rubber-banding (see globals.css), but a touch
+    // that starts directly on the canvas can otherwise still kick off a
+    // native scroll before that ever kicks in. Scoped to this wrapper
+    // only (not the whole page) so the volume slider in RoomHUD, which
+    // sits in its own layer above this, keeps its normal touch dragging.
+    <div className="absolute inset-0 touch-none" onPointerMove={handlePointerMove}>
       <AnalyserProvider value={analyser}>
         <Canvas
           // Starts just inside the tunnel's front opening — CubeRoom then
@@ -37,6 +44,13 @@ export default function RoomCanvas({
           // drift) so this is just the pre-mount starting point.
           camera={{ position: [0, 0, CAMERA_BASE_Z], fov: 72 }}
           gl={{ antialias: true }}
+          // Capped rather than left at the device's raw devicePixelRatio —
+          // phones/tablets commonly report 3, and rendering this much
+          // shader + Bloom/mipmapBlur post-processing at a full 3x buffer
+          // is what actually turns "optimize for mobile" into dropped
+          // frames rather than a sharper picture nobody can tell apart
+          // from 2x on a phone screen.
+          dpr={[1, 2]}
           onCreated={({ gl }) => {
             gl.setClearColor(room.palette.bg, 1);
           }}

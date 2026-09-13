@@ -15,6 +15,18 @@ body {
   height: 100%;
   background: var(--background);
   color: var(--foreground);
+  /* iOS Safari still rubber-bands the document past its own edges even
+     with overflow: hidden on body — the room stays put but the browser
+     lets the page itself stretch on an overscroll gesture, which for a
+     few frames reveals blank browser chrome above/below the canvas (the
+     other half of the "letterboxing" the room was showing on iPhone,
+     alongside the missing-viewport-meta scaling issue). overscroll-behavior
+     is the direct fix; pinning html/body in place is the belt-and-braces
+     fallback for the Safari versions that still bounce anyway. */
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
 }
 
 body {

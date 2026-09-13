@@ -83,14 +83,17 @@ export default function RoomHUD({ room }: { room: Room }) {
             pointer/keyboard activity (isIdle, from useIdleTracker) so it
             doesn't sit on screen during a quiet moment in the room, and
             fades right back in the instant the visitor moves again.
-            Fade-out is slow and eased (2s, ease-out — a gentle settle, not
-            a hard cut) while fade-in is quicker (1s) since reappearing
-            should feel responsive. */}
+            Fade-out is slow (2s) while fade-in is quicker (1s) since
+            reappearing should feel responsive. Both ride a "standard"
+            ease-in-out cubic-bezier (rather than a plain ease-out) and pair
+            the opacity with a very small scale/lift, since a smooth curve
+            on opacity alone still reads as a flat wipe — a touch of motion
+            underneath it is what actually sells "settling" in or out. */}
         <div
-          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ease-out ${
+          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-[opacity,transform] ease-[cubic-bezier(0.4,0,0.2,1)] ${
             isIdle
-              ? "duration-[2000ms] pointer-events-none opacity-0"
-              : "duration-[1000ms] pointer-events-auto opacity-100"
+              ? "duration-[2000ms] pointer-events-none opacity-0 translate-y-1 scale-[0.97]"
+              : "duration-[1000ms] pointer-events-auto opacity-100 translate-y-0 scale-100"
           }`}
         >
           <button
