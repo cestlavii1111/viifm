@@ -23,6 +23,11 @@ interface ExperienceState {
   volume: number;
   setVolume: (v: number) => void;
 
+  /** True once the pointer/keyboard has been untouched for a few seconds —
+   *  drives fading the OS cursor and the transport nav out of the way. */
+  isIdle: boolean;
+  setIdle: (idle: boolean) => void;
+
   /** 0..1 pointer position, updated by the canvas for scenes that want it */
   pointer: { x: number; y: number };
   setPointer: (x: number, y: number) => void;
@@ -47,6 +52,9 @@ export const useExperience = create<ExperienceState>((set) => ({
 
   volume: 0.7,
   setVolume: (v) => set({ volume: Math.min(1, Math.max(0, v)) }),
+
+  isIdle: false,
+  setIdle: (idle) => set({ isIdle: idle }),
 
   pointer: { x: 0.5, y: 0.5 },
   setPointer: (x, y) => set({ pointer: { x, y } }),

@@ -35,6 +35,13 @@ const HALF = 10.5;
  */
 const DEPTH = HALF * 14;
 /**
+ * Where the camera sits along the tunnel's axis at rest, just inside the
+ * front opening. Exported so RoomCanvas's initial camera position can
+ * derive from this instead of a hand-copied literal that has to be kept
+ * in sync by hand whenever DEPTH changes.
+ */
+export const CAMERA_BASE_Z = DEPTH - 1;
+/**
  * How generously the corners/edges round off. This used to be a large
  * fraction of HALF so the whole room read as one continuous curved
  * surface — but at that scale the curvature dominated the silhouette and
@@ -149,6 +156,13 @@ export default function CubeRoom({ room }: { room: Room }) {
   // mode change fades in/out instead of popping.
   const cascadeMaskTarget = useRef({ left: 1, right: 1, ceiling: 1, floor: 1 });
   const cascadeMaskCurrent = useRef({ left: 1, right: 1, ceiling: 1, floor: 1 });
+  // Accumulated "how far the painted panel pattern has scrolled," in panel
+  // widths. This — not any real camera travel — is what makes the tunnel
+  // read as endless: the room itself is a single, finite box, so actually
+  // flying the camera down its length would eventually hit the back wall.
+  // Scrolling the pattern instead has no such limit and never needs a
+  // seam/reset. See uDepthScroll in the shader.
+  const depthScroll = useRef(0);
 
   const geometry = useMemo(
     // The color/fluting comes entirely from the fragment shader reading
@@ -196,6 +210,7 @@ export default function CubeRoom({ room }: { room: Room }) {
       uCascadeMaskRight: { value: 1 },
       uCascadeMaskCeiling: { value: 1 },
       uCascadeMaskFloor: { value: 1 },
+      uDepthScroll: { value: 0 },
       // The base surface is now an intentionally clean white (see the
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
@@ -330,6 +345,14 @@ export default function CubeRoom({ room }: { room: Room }) {
     // color/speed change layered on an otherwise-identical band.
     const cascadeWidth = 0.13 + cascadePulse.current * 0.24 + normalized.overall * 0.06;
 
+    // Panel widths per second the tunnel's pattern flows toward the
+    // viewer — this is the "endless forward flight" illusion (see the
+    // shader's uDepthScroll). Slow and mostly steady on purpose ("slowly
+    // moves forward"), with a slight lift from the music's own energy so
+    // it doesn't feel metronomic either.
+    const depthScrollSpeed = 0.55 + normalized.overall * 0.35;
+    depthScroll.current += delta * depthScrollSpeed;
+
     const material = materialRef.current;
     if (material) {
       for (const wall of walls) {
@@ -374,6 +397,7 @@ export default function CubeRoom({ room }: { room: Room }) {
       material.uniforms.uCascadeMaskRight.value = maskCurrent.right;
       material.uniforms.uCascadeMaskCeiling.value = maskCurrent.ceiling;
       material.uniforms.uCascadeMaskFloor.value = maskCurrent.floor;
+      material.uniforms.uDepthScroll.value = depthScroll.current;
     }
 
     // Subtle head-turn toward the pointer — the visitor looking around the
@@ -382,6 +406,21 @@ export default function CubeRoom({ room }: { room: Room }) {
     const targetPitch = (0.5 - pointer.y) * 0.25;
     camera.rotation.y += (targetYaw - camera.rotation.y) * 0.04;
     camera.rotation.x += (targetPitch - camera.rotation.x) * 0.04;
+
+    // Slow forward-and-back drift along the tunnel's axis — real camera
+    // movement (not just the painted pattern above) so the box's actual
+    // corners/edges genuinely slide past, the way they would if you were
+    // physically floating through the space. It's a smooth, silent loop
+    // (a sine, easing at both ends) rather than a one-way crawl: actually
+    // traversing the length of this — necessarily finite — room would
+    // eventually reach the back wall. The *endless* half of "never-ending
+    // tunnel" comes from depthScroll above, which has no such limit; this
+    // is just what sells the motion as physically real.
+    const driftSpan = 16; // world units of forward travel at the peak
+    const driftPeriod = 42; // seconds for one full forward-and-back cycle
+    const driftPhase =
+      (Math.sin((t / driftPeriod) * Math.PI * 2 - Math.PI / 2) + 1) / 2; // 0..1, starts at 0
+    camera.position.z = CAMERA_BASE_Z - driftPhase * driftSpan;
   });
 
   return (

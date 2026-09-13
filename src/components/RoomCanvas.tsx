@@ -7,6 +7,7 @@ import type { Room } from "@/types/room";
 import { SCENES } from "@/lib/rooms";
 import { AnalyserProvider } from "@/lib/audio-context";
 import { useExperience } from "@/lib/store";
+import { CAMERA_BASE_Z } from "@/components/scenes/CubeRoom";
 
 export default function RoomCanvas({
   room,
@@ -31,10 +32,10 @@ export default function RoomCanvas({
     <div className="absolute inset-0" onPointerMove={handlePointerMove}>
       <AnalyserProvider value={analyser}>
         <Canvas
-          // z=146 sits just inside the tunnel's front opening (CubeRoom's
-          // DEPTH is 147) — keep this in sync with CubeRoom's DEPTH
-          // constant if that ever changes.
-          camera={{ position: [0, 0, 146], fov: 72 }}
+          // Starts just inside the tunnel's front opening — CubeRoom then
+          // takes over camera.position every frame (see its slow forward
+          // drift) so this is just the pre-mount starting point.
+          camera={{ position: [0, 0, CAMERA_BASE_Z], fov: 72 }}
           gl={{ antialias: true }}
           onCreated={({ gl }) => {
             gl.setClearColor(room.palette.bg, 1);

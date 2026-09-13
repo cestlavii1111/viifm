@@ -17,6 +17,7 @@ export default function RoomHUD({ room }: { room: Room }) {
   const roomIndex = useExperience((s) => s.roomIndex);
   const trackIndex = useExperience((s) => s.trackIndex);
   const nextTrack = useExperience((s) => s.nextTrack);
+  const isIdle = useExperience((s) => s.isIdle);
   const hasMultipleRooms = ROOMS.length > 1;
   const track = TRACKS[trackIndex];
 
@@ -77,8 +78,16 @@ export default function RoomHUD({ room }: { room: Room }) {
 
         {/* Little audio player nav: song name, play/pause, and an arrow to
             skip to the next track in the playlist (TRACKS in
-            src/lib/tracks.ts) — independent of which visual room is up. */}
-        <div className="flex items-center gap-3 rounded-full border border-white/15 bg-black/30 px-3 py-2 backdrop-blur-sm">
+            src/lib/tracks.ts) — independent of which visual room is up.
+            Fades out along with the cursor after a few seconds of no
+            pointer/keyboard activity (isIdle, from useIdleTracker) so it
+            doesn't sit on screen during a quiet moment in the room, and
+            fades right back in the instant the visitor moves again. */}
+        <div
+          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity duration-700 ${
+            isIdle ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
+          }`}
+        >
           <button
             onClick={() => setIsPlaying(!isPlaying)}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 text-white/80 transition hover:border-white/70 hover:text-white"

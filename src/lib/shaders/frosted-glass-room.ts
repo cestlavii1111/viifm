@@ -81,6 +81,10 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
   uniform float uCascadeMaskRight;
   uniform float uCascadeMaskCeiling;
   uniform float uCascadeMaskFloor;
+  // How far the painted panel pattern has scrolled, in panel widths — see
+  // where it's used below. This (not real camera travel through the
+  // room) is what makes the tunnel read as endless.
+  uniform float uDepthScroll;
   uniform float uExposure;
   varying vec3 vPos;
 
@@ -163,7 +167,13 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // all the way to the point, instead of a run of frames giving way to
     // one flat, featureless square near the end.
     float panelCount = 60.0; // nested square frames down the tunnel
-    float panelRaw = depthN * panelCount;
+    // Subtracting the accumulated scroll shifts each panel boundary toward
+    // higher depthN (toward the viewer) as time passes — the rings appear
+    // to originate at the vanishing point and travel outward past the
+    // visitor, exactly like flying forward down an endless hallway of
+    // painted rings. Since it only ever feeds a fract(), there's no
+    // travel limit and no seam to hide: the loop is inherent, not a reset.
+    float panelRaw = depthN * panelCount - uDepthScroll;
     float panelUv = fract(panelRaw);
     float panel = sin(panelUv * 3.14159265);
     // Seam contrast is boosted toward the back of the tunnel (low depthN)
