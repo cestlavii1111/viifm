@@ -90,7 +90,7 @@ export default function RoomHUD({ room }: { room: Room }) {
               // room-dots button above, which gets it from its own
               // wrapper — this one doesn't share that wrapper, so it needs
               // it directly instead of leaning on the parent chain.
-              className={`pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/50 transition-[opacity,color,border-color] hover:border-white/50 hover:text-white ${idleFadeClass}`}
+              className={`pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/50 transition-[opacity,color,border-color] will-change-opacity hover:border-white/50 hover:text-white ${idleFadeClass}`}
             >
               {isFullscreen ? (
                 <svg
@@ -174,7 +174,17 @@ export default function RoomHUD({ room }: { room: Room }) {
             Fade-in keeps a decelerating curve, which suits appearing (snap
             in, settle gently) rather than disappearing. */}
         <div
-          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ${idleFadeClass}`}
+          // will-change-opacity forces this onto its own compositor layer
+          // for the life of the fade. An HTML element with a plain opacity
+          // transition sitting directly above a WebGL canvas that's
+          // repainting every frame (this one is, at 60fps) can, on some
+          // GPU/driver/compositor combinations, have its own repaint
+          // silently skipped or coalesced away — the DOM ends up correctly
+          // at opacity: 0, but the last painted frame on screen never
+          // actually gets replaced, so it reads as "stuck visible" even
+          // though nothing in the app logic is wrong. Promoting it to its
+          // own layer up front is the standard fix for that class of bug.
+          className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity will-change-opacity ${idleFadeClass}`}
         >
           <button
             onClick={() => setIsPlaying(!isPlaying)}
