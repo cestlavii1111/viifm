@@ -9,6 +9,45 @@ import { useEffect, useRef, useState } from "react";
  */
 let sharedCtx: AudioContext | null = null;
 
+// iPhone/iPad Safari (and iOS's other browsers, which all use WebKit) route
+// Web Audio through the same audio session as the ringer by default — with
+// the hardware mute switch flipped to silent, a raw AudioContext like the
+// one below plays nothing at all, no matter what the in-page volume slider
+// says. This is a real, long-standing iOS behavior (not a bug in this
+// code), and there's no official API to opt an AudioContext itself out of
+// it — but WebKit *does* put plain HTML5 `<audio>`/`<video>` elements on
+// the separate "media" audio session instead, which the mute switch
+// doesn't affect. Playing one continuously alongside the real AudioContext
+// is what pulls the whole page's audio session over to "media" and lets
+// the AudioContext's own sound through even in silent mode — the same
+// technique used by widely-used unmute-ios-audio-type libraries. Content
+// has to be actually present (near-silent, not literal digital zero —
+// see silent-unlock.mp3, a ~1s tone mixed down to roughly -74dB, quiet
+// enough to be inaudible under any real track but not so "silent" that
+// WebKit optimizes the element's playback away and skips the session
+// switch). It has no effect at all on desktop/Android, where there's no
+// hardware mute switch to route around, so this is harmless to always run.
+let unlockAudioEl: HTMLAudioElement | null = null;
+
+function ensureSilentModeUnlock() {
+  if (!unlockAudioEl) {
+    unlockAudioEl = new Audio("/audio/silent-unlock.mp3");
+    unlockAudioEl.loop = true;
+    unlockAudioEl.volume = 1;
+    // iOS also gates a bare <audio>.play() behind the same user-gesture
+    // requirement as the AudioContext — fine here, since this only ever
+    // runs from inside getAudioContext(), which itself only ever runs
+    // from a gesture handler (see the comment on that function).
+    unlockAudioEl.play().catch(() => undefined);
+  } else if (unlockAudioEl.paused) {
+    // Re-assert on every getAudioContext() call (also covers e.g. the tab
+    // having been backgrounded and the element getting paused by the OS)
+    // rather than only once, so a dropped session switch doesn't silently
+    // stay dropped for the rest of the visit.
+    unlockAudioEl.play().catch(() => undefined);
+  }
+}
+
 export function getAudioContext(): AudioContext {
   if (!sharedCtx) {
     const Ctx =
@@ -31,6 +70,7 @@ export function getAudioContext(): AudioContext {
   if (sharedCtx.state === "suspended") {
     void sharedCtx.resume();
   }
+  ensureSilentModeUnlock();
   return sharedCtx;
 }
 
