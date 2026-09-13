@@ -125,12 +125,28 @@ export default function RoomHUD({ room }: { room: Room }) {
         </div>
       </div>
 
-      {/* bottom: transport controls */}
-      <div className="pointer-events-auto flex items-center justify-between gap-4">
+      {/* bottom: transport controls. The nav pill is centered by a
+          justify-between trick: with nothing else in this row, the two
+          flanking <span />s are both genuinely 0-width, so space-between
+          puts equal space on either side of the pill between them —
+          mathematically centering it regardless of the pill's own width.
+          That trick breaks the moment this row also has a `gap` set,
+          though: `gap` acts as a *minimum* spacing the browser must
+          reserve between every pair of children in addition to whatever
+          justify-content computes, and once the pill (which resizes with
+          the track title — see its own comment below) grows close to
+          this row's available width, that reserved minimum no longer
+          fits and the layout overflows — which shows up as the "centered"
+          pill actually sitting a few pixels off-center once a longer
+          title makes it wide enough, worst on mobile's narrower row.
+          There's deliberately no `gap` here for that reason; the
+          "Prev/Next room" buttons below carry their own margin instead,
+          for whenever a second room brings them back. */}
+      <div className="pointer-events-auto flex items-center justify-between">
         {hasMultipleRooms ? (
           <button
             onClick={prevRoom}
-            className="text-xs uppercase tracking-[0.25em] text-white/50 transition hover:text-white"
+            className="mr-4 text-xs uppercase tracking-[0.25em] text-white/50 transition hover:text-white"
           >
             ← Prev room
           </button>
@@ -170,7 +186,7 @@ export default function RoomHUD({ room }: { room: Room }) {
             drops right at the end — which is what keeps the two in sync.
             Fade-in keeps a decelerating curve, which suits appearing (snap
             in, settle gently) rather than disappearing. */}
-        <div
+        <motion.div
           // NOTE: this used to also carry `will-change-opacity`, added on
           // a theory that forcing this semi-transparent (bg-black/60)
           // panel onto its own compositor layer would prevent a "stuck
@@ -184,6 +200,24 @@ export default function RoomHUD({ room }: { room: Room }) {
           // will-change as the cause. Removed — a plain opacity
           // transition with no forced layer promotion is what's reliable
           // on both desktop and mobile here.
+          //
+          // `layout` makes this pill itself animate smoothly whenever its
+          // measured width changes — which now happens on every track
+          // change, since the title text below varies a lot in length
+          // ("Kimpton" vs "Frog Family — Snarez") and the pill sizes to
+          // its content rather than having a fixed width. Without this,
+          // the width change is instant on the same render the new text
+          // commits, reading as a snap/pop; framer-motion instead
+          // captures the pill's box before and after that layout shift
+          // and eases between them with a transform, so it grows/shrinks
+          // gradually. The parent row centers this pill via a
+          // justify-between/empty-span trick (see below it and above it),
+          // which keeps recentering it correctly at every point along
+          // that same eased resize — on both mobile and desktop, since
+          // it's the same flex layout at both sizes, just with a narrower
+          // text max-width on mobile (see the truncate span below).
+          layout
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           className={`flex items-center gap-3 rounded-full border border-white/15 bg-black/60 px-3 py-2 transition-opacity ${idleFadeClass}`}
         >
           {TRACKS.length > 1 && (
@@ -204,14 +238,32 @@ export default function RoomHUD({ room }: { room: Room }) {
             {isPlaying ? "❙❙" : "▶"}
           </button>
 
-          <AnimatePresence mode="wait">
+          {/* popLayout (not the default "wait") — with "wait" the old title
+              fully exits before the new one mounts, which for a moment
+              leaves the pill with no title text in the flex flow at all,
+              so it would visibly shrink and then grow again instead of
+              transitioning in one smooth motion between the two widths.
+              popLayout takes the exiting element out of flow (position:
+              absolute) immediately so the incoming title's width is what
+              the pill's own `layout` animation above eases toward, start
+              to finish. */}
+          <AnimatePresence mode="popLayout">
             <motion.span
               key={track?.id}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.3 }}
-              className="font-headline max-w-[9rem] truncate text-[11px] uppercase tracking-[0.15em] text-white/70 sm:max-w-[16rem]"
+              // Mobile's cap was 9rem (144px) — wide enough that, combined
+              // with the prev/play/next buttons and volume slider that all
+              // share this same pill, a fully-truncated long title (most
+              // of the playlist, once titles include an artist name) made
+              // the whole pill wider than the phone's available width
+              // (viewport minus this HUD's own side padding). An
+              // over-wide pill can't be centered — it just overflows one
+              // side — so this had to come down to something that leaves
+              // real margin even at that longest, fully-truncated width.
+              className="font-headline max-w-[5.5rem] truncate text-[11px] uppercase tracking-[0.15em] text-white/70 sm:max-w-[16rem]"
             >
               {track ? (track.artist ? `${track.artist} — ${track.title}` : track.title) : ""}
             </motion.span>
@@ -243,12 +295,12 @@ export default function RoomHUD({ room }: { room: Room }) {
             className="w-14 shrink-0 touch-auto accent-white/80 sm:w-20"
             aria-label="Volume"
           />
-        </div>
+        </motion.div>
 
         {hasMultipleRooms ? (
           <button
             onClick={nextRoom}
-            className="text-xs uppercase tracking-[0.25em] text-white/50 transition hover:text-white"
+            className="ml-4 text-xs uppercase tracking-[0.25em] text-white/50 transition hover:text-white"
           >
             Next room →
           </button>
