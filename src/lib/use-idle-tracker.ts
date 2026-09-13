@@ -35,32 +35,58 @@ export function useIdleTracker(enabled: boolean, timeoutMs = IDLE_TIMEOUT_MS) {
       timer = window.setTimeout(() => setIdle(true), timeoutMs);
     };
 
-    // Browsers occasionally dispatch a "pointermove" with no actual mouse
-    // movement behind it — e.g. Chrome fires one to refresh :hover state
-    // whenever the DOM under a stationary pointer changes (which the cursor
-    // itself hiding/showing, or the room's own layout shifting, both do
-    // constantly here). Without filtering these out, one of those synthetic
-    // events could land right after the idle timeout fires and immediately
-    // wake things back up — reappearing the cursor and nav for no reason
-    // the visitor actually did anything. A real pointermove always carries
-    // nonzero movementX/Y; a synthetic hover-refresh one reports (0, 0).
+    // Browsers occasionally dispatch a "pointermove" (or a residual
+    // "wheel", from a trackpad's momentum scroll tailing off) with little
+    // or no real movement behind it — e.g. Chrome refreshing :hover state
+    // whenever the DOM under a stationary pointer changes, which the
+    // cursor itself hiding, the room's own layout, or an animating track
+    // name all do constantly here. Left unfiltered, any one of those can
+    // land after the idle timeout fires and immediately wake everything
+    // back up for no reason the visitor actually did anything — which is
+    // exactly what "the nav never fades away" turned out to be: a steady
+    // trickle of these was resetting the 3s timer before it ever ran out.
+    //
+    // The previous attempt at this filtered on PointerEvent.movementX/Y
+    // being exactly (0, 0), on the assumption a synthetic event reports no
+    // movement. That doesn't hold across browsers/devices reliably enough
+    // (some report a tiny nonzero value, or handle movementX/Y differently
+    // at fractional device pixel ratios) — a filter that only catches the
+    // exact-zero case still lets enough of these through to keep the timer
+    // alive indefinitely. Tracking real client-coordinate deltas ourselves
+    // and requiring a couple of real pixels of travel is the more reliable
+    // version of the same idea, independent of any single browser's
+    // movementX/Y semantics.
+    let lastX: number | null = null;
+    let lastY: number | null = null;
+    const MIN_MOVE_PX = 3;
     const onPointerMove = (e: PointerEvent) => {
-      if (e.movementX === 0 && e.movementY === 0) return;
+      if (lastX !== null && lastY !== null) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        if (dx * dx + dy * dy < MIN_MOVE_PX * MIN_MOVE_PX) return;
+      }
+      lastX = e.clientX;
+      lastY = e.clientY;
+      markActive();
+    };
+    // Same idea for wheel: a trackpad's inertial scroll can keep sending
+    // events with a vanishingly small (but not always exactly zero) delta
+    // for a second or more after a finger actually lifts.
+    const MIN_WHEEL_DELTA = 1;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) < MIN_WHEEL_DELTA && Math.abs(e.deltaY) < MIN_WHEEL_DELTA) return;
       markActive();
     };
 
     markActive();
     window.addEventListener("pointermove", onPointerMove, { passive: true });
-    const events: (keyof WindowEventMap)[] = [
-      "pointerdown",
-      "keydown",
-      "wheel",
-      "touchstart",
-    ];
+    window.addEventListener("wheel", onWheel, { passive: true });
+    const events: (keyof WindowEventMap)[] = ["pointerdown", "keydown", "touchstart"];
     events.forEach((event) => window.addEventListener(event, markActive, { passive: true }));
 
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("wheel", onWheel);
       events.forEach((event) => window.removeEventListener(event, markActive));
       if (timer) window.clearTimeout(timer);
     };
