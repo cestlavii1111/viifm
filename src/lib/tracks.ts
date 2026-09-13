@@ -22,4 +22,16 @@ export const TRACKS: Track[] = [
     artist: "Automatic",
     src: "/audio/automatic-too-much-money.mp3",
   },
+  {
+    id: "house-fire",
+    title: "House Fire",
+    artist: "Deki Alem",
+    src: "/audio/deki-alem-house-fire.mp3",
+  },
+  {
+    id: "deeper-transformation",
+    title: "Deeper Transformation",
+    artist: "Supernova",
+    src: "/audio/supernova-deeper-transformation.mp3",
+  },
 ];

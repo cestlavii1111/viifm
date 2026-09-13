@@ -47,12 +47,6 @@ export default function RoomHUD({ room }: { room: Room }) {
             <p className="text-[10px] uppercase tracking-[0.3em] text-white/40">
               {room.subtitle}
             </p>
-            <h1
-              className="mt-1 text-xl font-light uppercase tracking-[0.2em]"
-              style={{ color: room.palette.accent }}
-            >
-              {room.title}
-            </h1>
           </motion.div>
         </AnimatePresence>
 
