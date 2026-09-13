@@ -44,3 +44,14 @@ body {
     -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial,
     sans-serif;
 }
+
+/* Square dot-matrix display face for headline-type text only (landing
+   tagline, the vii.fm marks, the currently-playing track name) — see the
+   @fontsource/dotgothic16 import in layout.tsx. Scoped to this utility
+   class rather than a global font-family override so the rest of the UI
+   keeps its normal system font. Letter-spacing is opened up slightly
+   because dot-matrix glyphs read as cramped at normal tracking. */
+.font-headline {
+  font-family: "DotGothic16", monospace;
+  letter-spacing: 0.04em;
+}

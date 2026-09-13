@@ -1,4 +1,17 @@
 import type { Metadata, Viewport } from "next";
+// A square, pixel-grid "dot matrix" display face — used for the room's
+// headline text (the landing tagline, the vii.fm marks, the currently
+// playing track name) rather than the whole UI, so it reads as a deliberate
+// accent rather than making body copy harder to scan (see the
+// .font-headline utility in globals.css, which references it by name).
+//
+// Self-hosted via @fontsource rather than next/font/google: next/font
+// fetches the font file from Google Fonts at build time, which fails in
+// network environments that block fonts.googleapis.com/fonts.gstatic.com
+// (this sandbox's build proxy included) — @fontsource ships the actual
+// woff2 files inside the npm package itself, so there's no such runtime
+// dependency on Google's servers either at build or at request time.
+import "@fontsource/dotgothic16/latin-400.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

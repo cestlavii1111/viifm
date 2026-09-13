@@ -44,7 +44,7 @@ export default function RoomHUD({ room }: { room: Room }) {
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.5 }}
           >
-            <p className="text-[10px] uppercase tracking-[0.3em] text-white/40">
+            <p className="font-headline text-[10px] uppercase tracking-[0.3em] text-white/40">
               {room.subtitle}
             </p>
           </motion.div>
@@ -200,7 +200,7 @@ export default function RoomHUD({ room }: { room: Room }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.3 }}
-              className="max-w-[9rem] truncate text-[11px] uppercase tracking-[0.15em] text-white/70 sm:max-w-[16rem]"
+              className="font-headline max-w-[9rem] truncate text-[11px] uppercase tracking-[0.15em] text-white/70 sm:max-w-[16rem]"
             >
               {track ? (track.artist ? `${track.artist} — ${track.title}` : track.title) : ""}
             </motion.span>
