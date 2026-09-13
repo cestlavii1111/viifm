@@ -16,6 +16,7 @@ interface ExperienceState {
    *  playlist can grow without needing a visual room per song. */
   trackIndex: number;
   nextTrack: () => void;
+  prevTrack: () => void;
 
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
@@ -46,6 +47,8 @@ export const useExperience = create<ExperienceState>((set) => ({
 
   trackIndex: 0,
   nextTrack: () => set((s) => ({ trackIndex: (s.trackIndex + 1) % TRACKS.length })),
+  prevTrack: () =>
+    set((s) => ({ trackIndex: (s.trackIndex - 1 + TRACKS.length) % TRACKS.length })),
 
   isPlaying: false,
   setIsPlaying: (playing) => set({ isPlaying: playing }),

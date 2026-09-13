@@ -34,4 +34,10 @@ export const TRACKS: Track[] = [
     artist: "Supernova",
     src: "/audio/supernova-deeper-transformation.mp3",
   },
+  {
+    id: "snarez",
+    title: "Snarez",
+    artist: "Frog Family",
+    src: "/audio/frog-family-snarez.mp3",
+  },
 ];
