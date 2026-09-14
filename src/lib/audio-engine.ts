@@ -48,6 +48,42 @@ function ensureSilentModeUnlock() {
   }
 }
 
+/**
+ * Chrome/Android and (independently of the silent-mode workaround above)
+ * iOS Safari both suspend an AudioContext once its tab/page has been
+ * hidden or backgrounded for a while, as a battery-saving measure — this
+ * is a separate thing from the ringer/mute-switch routing handled above,
+ * and it affects every platform, not just iOS. A suspended context stops
+ * processing entirely: nothing plays, and any node scheduled to fire an
+ * event (like an AudioBufferSourceNode's `onended`, which is what drives
+ * auto-advancing to the next track below) simply never fires until the
+ * context resumes. Re-requesting resume() the moment the page becomes
+ * visible/focused again — rather than only doing it lazily the next time
+ * getAudioContext() happens to be called from some other code path — is
+ * what keeps a track that finished while the phone was locked from
+ * getting stuck silent instead of rolling on to the next one the instant
+ * the visitor comes back.
+ */
+function registerVisibilityResume(ctx: AudioContext) {
+  const resume = () => {
+    if (ctx.state === "suspended") {
+      void ctx.resume();
+    }
+    // The OS can also pause the silent-mode-unlock element itself while
+    // backgrounded — re-assert it here too so coming back from a locked
+    // screen doesn't silently drop back into the ringer's audio session.
+    ensureSilentModeUnlock();
+  };
+  document.addEventListener("visibilitychange", resume);
+  window.addEventListener("pageshow", resume);
+  window.addEventListener("focus", resume);
+  return () => {
+    document.removeEventListener("visibilitychange", resume);
+    window.removeEventListener("pageshow", resume);
+    window.removeEventListener("focus", resume);
+  };
+}
+
 export function getAudioContext(): AudioContext {
   if (!sharedCtx) {
     const Ctx =
@@ -191,6 +227,7 @@ export function useAudioEngine(
   // --- one-time graph setup -------------------------------------------------
   useEffect(() => {
     const ctx = getAudioContext();
+    const unregisterVisibilityResume = registerVisibilityResume(ctx);
 
     const masterGain = ctx.createGain();
     masterGain.gain.value = volume;
@@ -257,6 +294,7 @@ export function useAudioEngine(
     schedulePulse();
 
     return () => {
+      unregisterVisibilityResume();
       if (pulseTimer) window.clearTimeout(pulseTimer);
       if (pendingStopRef.current) window.clearTimeout(pendingStopRef.current);
       oscillators.forEach((o) => {
@@ -412,6 +450,73 @@ export function useAudioEngine(
   }, [audioSrc, isPlaying]);
 
   return { analyser };
+}
+
+/**
+ * Publishes now-playing info and transport controls through the Media
+ * Session API — the mechanism browsers use to show lock-screen/control-
+ * center "now playing" cards and hardware/Bluetooth media-key controls,
+ * and (more importantly here) the standard way a site tells the OS this
+ * really is an active media session worth keeping alive in the
+ * background. There's no guarantee this makes background/lock-screen
+ * playback bulletproof on every device — that's ultimately up to each
+ * browser/OS's own power-management policy, and a plain website can't
+ * force it the way a native app with a background-audio entitlement can
+ * — but this is the correct, standard way to ask for it, and it's what
+ * every other web-based music player relies on for the same behavior.
+ *
+ * The play/pause/previous/next handlers here double as a recovery path:
+ * a tap on the lock-screen or Bluetooth-headset controls is its own
+ * trusted user gesture as far as the OS is concerned (separate from any
+ * gesture on the page itself), so resuming the AudioContext from inside
+ * these handlers can revive a context the OS had suspended while the
+ * screen was locked, in cases where simply coming back to the tab
+ * doesn't already do it (see registerVisibilityResume above).
+ */
+export function useMediaSessionControls(
+  track: { title: string; artist?: string } | undefined,
+  isPlaying: boolean,
+  handlers: {
+    onPlay: () => void;
+    onPause: () => void;
+    onNext: () => void;
+    onPrev: () => void;
+  }
+) {
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = track
+      ? new MediaMetadata({ title: track.title, artist: track.artist ?? "vii.fm" })
+      : null;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [track, isPlaying]);
+
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.setActionHandler("play", () => {
+      void getAudioContext().resume();
+      handlersRef.current.onPlay();
+    });
+    ms.setActionHandler("pause", () => handlersRef.current.onPause());
+    ms.setActionHandler("previoustrack", () => {
+      void getAudioContext().resume();
+      handlersRef.current.onPrev();
+    });
+    ms.setActionHandler("nexttrack", () => {
+      void getAudioContext().resume();
+      handlersRef.current.onNext();
+    });
+    return () => {
+      ms.setActionHandler("play", null);
+      ms.setActionHandler("pause", null);
+      ms.setActionHandler("previoustrack", null);
+      ms.setActionHandler("nexttrack", null);
+    };
+  }, []);
 }
 
 export interface FrequencyBands {

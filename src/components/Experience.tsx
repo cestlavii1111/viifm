@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useExperience } from "@/lib/store";
 import { ROOMS } from "@/lib/rooms";
 import { TRACKS } from "@/lib/tracks";
-import { useAudioEngine } from "@/lib/audio-engine";
+import { useAudioEngine, useMediaSessionControls } from "@/lib/audio-engine";
 import { useIdleTracker, IDLE_FADE_OUT_MS } from "@/lib/use-idle-tracker";
 import { useHideMobileChrome } from "@/lib/use-hide-mobile-chrome";
 import Landing from "@/components/ui/Landing";
@@ -17,9 +17,11 @@ export default function Experience() {
   const roomIndex = useExperience((s) => s.roomIndex);
   const trackIndex = useExperience((s) => s.trackIndex);
   const isPlaying = useExperience((s) => s.isPlaying);
+  const setIsPlaying = useExperience((s) => s.setIsPlaying);
   const volume = useExperience((s) => s.volume);
   const isIdle = useExperience((s) => s.isIdle);
   const nextTrack = useExperience((s) => s.nextTrack);
+  const prevTrack = useExperience((s) => s.prevTrack);
   // The OS cursor can't fade — it's only ever fully shown or fully hidden —
   // so to make it disappear at the same moment the nav finishes fading
   // out (rather than vanishing instantly while the nav is still visibly
@@ -36,6 +38,19 @@ export default function Experience() {
     hasEntered && isPlaying,
     volume,
     nextTrack
+  );
+  // Lock-screen/control-center "now playing" info + hardware media-key
+  // support — see the hook's own comment for why this also helps recover
+  // playback the OS suspended while the screen was locked.
+  useMediaSessionControls(
+    track ? { title: track.title, artist: track.artist } : undefined,
+    hasEntered && isPlaying,
+    {
+      onPlay: () => setIsPlaying(true),
+      onPause: () => setIsPlaying(false),
+      onNext: nextTrack,
+      onPrev: prevTrack,
+    }
   );
   // Only watch for idleness once the visitor is actually inside the room —
   // no reason to hide the cursor over the landing gate.
