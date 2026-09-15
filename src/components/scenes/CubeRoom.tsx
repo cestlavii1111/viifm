@@ -66,30 +66,25 @@ const CORNER_RADIUS = HALF * 0.02;
  * CORNER_RADIUS is unchanged). Still trivial geometry either way — this
  * is one static mesh, not something rebuilt per frame.
  */
-const CURVE_SEGMENTS = 12;
+const CURVE_SEGMENTS = 20;
 /**
- * How far the tunnel's far end can lean sideways/up-down at full cursor
- * (or finger) deflection, in world units — see the vertex shader's bendT
- * for how this grows from 0 right at the viewer's own end to its maximum
- * at the far/back wall. Kept as a multiple of HALF (the cross-section's
- * own half-width) rather than a flat number so this stays proportional
- * if the room's scale ever changes — but note it's several *multiples*
- * of HALF, not a fraction of it, and that's not a typo: this tunnel is
- * extremely deep relative to how wide it is (DEPTH is 14x HALF), and
- * perspective divides a given world-space offset by how far away it is —
- * a bend applied way out at the vanishing point gets compressed down to
- * only a few screen pixels no matter how large it is in world units. It
- * takes an offset multiple times the tunnel's own width, applied out
- * there, to read on screen as even a gentle, tasteful lean.
- *
- * Now that the camera holds still (no more head-turn chasing the pointer
- * too — see the comment below on why that got removed), X and Y respond
- * the same way to the same-size input, so these two can stay in the same
- * proportion to each other. Tuned by actually screenshotting the result
- * at several magnitudes rather than derived from the geometry alone.
+ * Total angle (radians) the tunnel has turned through by the time it
+ * reaches the far/back wall, at full cursor (or finger) deflection —
+ * see the vertex shader's bend math for how a cross-section's rotation
+ * grows from 0 right at the viewer's own end up to this at the back wall.
+ * This used to be a raw sideways offset in world units (the tunnel's
+ * cross-sections just slid over without rotating), but that read as
+ * camera movement rather than the tunnel itself turning — real curved
+ * geometry needs cross-sections to actually rotate to keep "facing
+ * forward" along the turn, which only an angle (not an offset) can drive.
+ * ~quarter turn (Math.PI/2) matches the tight reference-image curve;
+ * roughly a third of that reads as a noticeably gentler, still-obvious
+ * turn. X and Y share the same max since the bend math combines them
+ * into one tilted-axis turn rather than two independent axes.
  */
-const CURVE_MAX_X = HALF * 3.5;
-const CURVE_MAX_Y = HALF * 3.5;
+const CURVE_MAX_ANGLE = Math.PI * 0.18; // ~32° — moderate default; ~54° ("tight") was also screenshotted for comparison, see chat
+const CURVE_MAX_X = CURVE_MAX_ANGLE;
+const CURVE_MAX_Y = CURVE_MAX_ANGLE;
 
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
