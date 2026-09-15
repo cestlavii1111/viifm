@@ -37,11 +37,52 @@
  * go but straight back to clipped white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
+  // How far the tunnel's cross-section currently leans sideways/up-down at
+  // its far end — driven by the visitor's cursor (or, on mobile, finger)
+  // position, eased in JS. See uHalf/bendT below for how this actually
+  // bends the tunnel's shape.
+  uniform float uCurveX;
+  uniform float uCurveY;
+  uniform vec3 uHalf;
   varying vec3 vPos;
 
   void main() {
+    // vPos stays the room's original, straight-tunnel coordinates — every
+    // fragment-shader calculation (which wall a point belongs to, how far
+    // down the tunnel it is, the panel seams) is expressed in these
+    // "logical" coordinates and has no reason to change just because the
+    // tunnel's actual on-screen shape is bending. Decoupling the two like
+    // this means the curve below is purely a matter of *where a vertex
+    // ends up on screen*, with zero risk of throwing off the wall-blend
+    // math, panel indexing, or dithering that all still reason about this
+    // as a perfectly straight box.
     vPos = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+    // depthN: 1 at the near opening (right where the visitor is standing),
+    // 0 at the far/back wall — same convention the fragment shader already
+    // uses for its own depthN. bendT is its complement: 0 right at the
+    // viewer, growing *linearly* with actual distance down the tunnel.
+    // That linear (not eased/curved) growth matters: perspective divides
+    // a world-space offset by how far away it is, so a constant offset/
+    // distance ratio is what reads on screen as a steady, constant-rate
+    // curve throughout the tunnel's length — the way a real curving
+    // hallway looks, rather than looking straight for a while and then
+    // suddenly kinking hard only right at the vanishing point (which is
+    // what an eased curve here produced: nearly all of it landed on the
+    // handful of screen pixels right around the vanishing point, where
+    // perspective had already compressed it into nothing).
+    float depthN = clamp((position.z + uHalf.z) / (2.0 * uHalf.z), 0.0, 1.0);
+    float bendT = 1.0 - depthN;
+
+    // Shifting the whole cross-section sideways/up-down by the same amount
+    // at a given depth (rather than scaling it) is what keeps every
+    // cross-section a true, undistorted square as it slides — the tunnel
+    // reads as bending, not warping or narrowing.
+    vec3 bentPosition = position;
+    bentPosition.x += uCurveX * bendT;
+    bentPosition.y += uCurveY * bendT;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(bentPosition, 1.0);
   }
 `;
 

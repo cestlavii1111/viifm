@@ -51,6 +51,50 @@ export const CAMERA_BASE_Z = DEPTH - 1;
  * a tunnel of square frames receding back rather than a rounded chamber.
  */
 const CORNER_RADIUS = HALF * 0.02;
+/**
+ * Segments passed to RoundedBoxGeometry — also, as a side effect of how
+ * that geometry is built (it starts from a plain BoxGeometry subdivided
+ * `segments*2+1` times per axis, including depth), how many steps long
+ * the tunnel's walls are sliced into lengthwise. That only ever mattered
+ * for corner-rounding smoothness before (see CORNER_RADIUS above, which
+ * deliberately keeps corners near-sharp), so it stayed low. Now that the
+ * cursor-driven curve below actually bends those vertices sideways
+ * per-slice, too few slices would make the bend look faceted/kinked
+ * rather than a smooth arc — this needs to be high enough for the curve
+ * to read as one continuous curve down the tunnel's real length (DEPTH),
+ * not for the rounding (which stays just as sharp either way, since
+ * CORNER_RADIUS is unchanged). Still trivial geometry either way — this
+ * is one static mesh, not something rebuilt per frame.
+ */
+const CURVE_SEGMENTS = 12;
+/**
+ * How far the tunnel's far end can lean sideways/up-down at full cursor
+ * (or finger) deflection, in world units — see the vertex shader's bendT
+ * for how this grows from 0 right at the viewer's own end to its maximum
+ * at the far/back wall. Kept as a multiple of HALF (the cross-section's
+ * own half-width) rather than a flat number so this stays proportional
+ * if the room's scale ever changes — but note it's several *multiples*
+ * of HALF, not a fraction of it, and that's not a typo: this tunnel is
+ * extremely deep relative to how wide it is (DEPTH is 14x HALF), and
+ * perspective divides a given world-space offset by how far away it is —
+ * a bend applied way out at the vanishing point gets compressed down to
+ * only a few screen pixels no matter how large it is in world units. It
+ * takes an offset multiple times the tunnel's own width, applied out
+ * there, to read on screen as even a gentle, tasteful lean.
+ *
+ * X and Y need very different-looking numbers to read as an *equally*
+ * subtle lean on each axis — not because the underlying perspective math
+ * differs much between them, but because the existing head-turn just
+ * below (targetYaw/targetPitch) rotates the camera to track the pointer
+ * on both axes too, and pitch happens to track the vertical bend's own
+ * vanishing point much more closely than yaw tracks the horizontal one —
+ * so a Y value in the same proportion as X visibly under-shoots. Both
+ * were tuned by actually screenshotting the combined result (bend +
+ * head-turn together, since that's what a visitor actually sees) at
+ * several magnitudes rather than derived from the geometry alone.
+ */
+const CURVE_MAX_X = HALF * 5;
+const CURVE_MAX_Y = HALF * 9;
 
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
@@ -171,6 +215,15 @@ export default function CubeRoom({ room }: { room: Room }) {
   // Scrolling the pattern instead has no such limit and never needs a
   // seam/reset. See uDepthScroll in the shader.
   const depthScroll = useRef(0);
+  // Cursor/finger-driven tunnel curve — how far the far end of the tunnel
+  // currently leans sideways/up-down (world units), eased toward a target
+  // derived from the pointer each frame so a sudden cursor jump steers
+  // smoothly into the turn rather than snapping the whole tunnel over.
+  // Kept deliberately modest relative to HALF (the tunnel's own
+  // cross-section) — this is meant to read as steering through a gentle
+  // curve, not warping the room.
+  const curveX = useRef(0);
+  const curveY = useRef(0);
 
   const geometry = useMemo(
     // The color/fluting comes entirely from the fragment shader reading
@@ -178,7 +231,7 @@ export default function CubeRoom({ room }: { room: Room }) {
     // subdivision — 14 segments was only ever buying smoother *corner*
     // curvature. With the corners now nearly sharp (see CORNER_RADIUS)
     // that resolution is wasted, so this is dropped to 4.
-    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, DEPTH * 2, 4, CORNER_RADIUS),
+    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, DEPTH * 2, CURVE_SEGMENTS, CORNER_RADIUS),
     []
   );
 
@@ -230,6 +283,8 @@ export default function CubeRoom({ room }: { room: Room }) {
       uCascadeMaskCeiling: { value: 1 },
       uCascadeMaskFloor: { value: 1 },
       uDepthScroll: { value: 0 },
+      uCurveX: { value: 0 },
+      uCurveY: { value: 0 },
       // The base surface is now an intentionally clean white (see the
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
@@ -466,6 +521,22 @@ export default function CubeRoom({ room }: { room: Room }) {
     const targetPitch = (0.5 - pointer.y) * 0.25;
     camera.rotation.y += (targetYaw - camera.rotation.y) * 0.04;
     camera.rotation.x += (targetPitch - camera.rotation.x) * 0.04;
+
+    // Cursor/finger steers the tunnel itself, not just where the camera
+    // looks: how far off-center the pointer sits sets how hard the tunnel
+    // curves, same 0..1 pointer values (and same sign conventions) as the
+    // head-turn just above — cursor left curves the tunnel left, cursor up
+    // curves it up. Same easing rate as the head-turn too, so both read as
+    // one continuous "steering into the turn" motion rather than the head
+    // and the tunnel settling at different speeds.
+    const curveTargetX = (pointer.x - 0.5) * 2 * CURVE_MAX_X;
+    const curveTargetY = (0.5 - pointer.y) * 2 * CURVE_MAX_Y;
+    curveX.current += (curveTargetX - curveX.current) * 0.04;
+    curveY.current += (curveTargetY - curveY.current) * 0.04;
+    if (material) {
+      material.uniforms.uCurveX.value = curveX.current;
+      material.uniforms.uCurveY.value = curveY.current;
+    }
 
     // Slow forward-and-back drift along the tunnel's axis — real camera
     // movement (not just the painted pattern above) so the box's actual

@@ -40,6 +40,26 @@ export default function RoomCanvas({
     [setPointer]
   );
 
+  // Pointer Events already unify mouse and touch, so a finger dragging
+  // across the canvas fires the same onPointerMove above as a mouse move —
+  // no touch-specific handling needed to steer the room/tunnel by touch.
+  // The one real difference: a mouse has a resting position even when it
+  // stops moving, so leaving it wherever the visitor last looked/steered
+  // makes sense. A finger doesn't — once it lifts there's no "cursor"
+  // position left on screen at all, so leaving the tunnel curved/the
+  // camera turned until the next touch would just look stuck rather than
+  // intentional. Recentering back to (0.5, 0.5) on release (only for
+  // touch — a mouse click shouldn't do this) is what makes it read as
+  // "steer while you're holding it, springs back when you let go."
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "touch") {
+        setPointer(0.5, 0.5);
+      }
+    },
+    [setPointer]
+  );
+
   // Double-click (desktop) / double-tap (mobile) recenters the camera
   // straight down the tunnel. CubeRoom already eases camera.rotation
   // toward a target derived from the store's `pointer` value every frame
@@ -76,6 +96,8 @@ export default function RoomCanvas({
       className="absolute inset-0 touch-none"
       onPointerMove={handlePointerMove}
       onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       <AnalyserProvider value={analyser}>
         <Canvas
