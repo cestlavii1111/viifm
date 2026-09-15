@@ -82,19 +82,14 @@ const CURVE_SEGMENTS = 12;
  * takes an offset multiple times the tunnel's own width, applied out
  * there, to read on screen as even a gentle, tasteful lean.
  *
- * X and Y need very different-looking numbers to read as an *equally*
- * subtle lean on each axis — not because the underlying perspective math
- * differs much between them, but because the existing head-turn just
- * below (targetYaw/targetPitch) rotates the camera to track the pointer
- * on both axes too, and pitch happens to track the vertical bend's own
- * vanishing point much more closely than yaw tracks the horizontal one —
- * so a Y value in the same proportion as X visibly under-shoots. Both
- * were tuned by actually screenshotting the combined result (bend +
- * head-turn together, since that's what a visitor actually sees) at
- * several magnitudes rather than derived from the geometry alone.
+ * Now that the camera holds still (no more head-turn chasing the pointer
+ * too — see the comment below on why that got removed), X and Y respond
+ * the same way to the same-size input, so these two can stay in the same
+ * proportion to each other. Tuned by actually screenshotting the result
+ * at several magnitudes rather than derived from the geometry alone.
  */
-const CURVE_MAX_X = HALF * 5;
-const CURVE_MAX_Y = HALF * 9;
+const CURVE_MAX_X = HALF * 3.5;
+const CURVE_MAX_Y = HALF * 3.5;
 
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
@@ -515,20 +510,21 @@ export default function CubeRoom({ room }: { room: Room }) {
       material.uniforms.uDepthScroll.value = depthScroll.current;
     }
 
-    // Subtle head-turn toward the pointer — the visitor looking around the
-    // room from where they stand, not moving through it.
-    const targetYaw = (pointer.x - 0.5) * 0.5;
-    const targetPitch = (0.5 - pointer.y) * 0.25;
-    camera.rotation.y += (targetYaw - camera.rotation.y) * 0.04;
-    camera.rotation.x += (targetPitch - camera.rotation.x) * 0.04;
-
-    // Cursor/finger steers the tunnel itself, not just where the camera
-    // looks: how far off-center the pointer sits sets how hard the tunnel
-    // curves, same 0..1 pointer values (and same sign conventions) as the
-    // head-turn just above — cursor left curves the tunnel left, cursor up
-    // curves it up. Same easing rate as the head-turn too, so both read as
-    // one continuous "steering into the turn" motion rather than the head
-    // and the tunnel settling at different speeds.
+    // Cursor/finger steers the tunnel itself: how far off-center the
+    // pointer sits sets how hard the tunnel curves — cursor left curves it
+    // left, cursor up curves it up. This used to be paired with a subtle
+    // camera head-turn toward the same pointer position (the visitor
+    // "looking around" the room), but that turned out to work directly
+    // against the curve reading as a curve at all: the camera would swing
+    // to follow the pointer and, in doing so, chase the bent tunnel's
+    // vanishing point back toward the center of the screen — visually
+    // canceling out the one cue (the vanishing point actually drifting
+    // off-center) that reads as "the road bends," leaving only the
+    // camera's own pan as the visible motion. Removed entirely: the
+    // camera now holds still and looks straight down the tunnel's own
+    // axis at all times, the way your head stays roughly forward-facing
+    // driving toward a bend in a road — so it's the tunnel visibly curving
+    // away from that fixed view that reads as curving, not a look-around.
     const curveTargetX = (pointer.x - 0.5) * 2 * CURVE_MAX_X;
     const curveTargetY = (0.5 - pointer.y) * 2 * CURVE_MAX_Y;
     curveX.current += (curveTargetX - curveX.current) * 0.04;
