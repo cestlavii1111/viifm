@@ -39,8 +39,19 @@ const DEPTH = HALF * 14;
  * front opening. Exported so RoomCanvas's initial camera position can
  * derive from this instead of a hand-copied literal that has to be kept
  * in sync by hand whenever DEPTH changes.
+ *
+ * Standback was 1 unit for most of this room's life — fine while the
+ * tunnel was a straight shift, but the turn-on-cursor curve (see
+ * frosted-glass-room.ts's bend zone) needs the camera sitting back far
+ * enough from the front opening to actually see a meaningful arc of that
+ * zone unfold in front of it; at 1 unit almost the entire zone sat
+ * outside the frustum and the bend read as flat no matter how the curve
+ * math was tuned. 2x HALF is the smallest standback that reliably shows
+ * the bend at full drag without any of the near geometry clipping
+ * through the camera's near plane, while still leaving the room's resting
+ * (uncurved) framing visually indistinguishable from before.
  */
-export const CAMERA_BASE_Z = DEPTH - 1;
+export const CAMERA_BASE_Z = DEPTH - HALF * 2.0;
 /**
  * How generously the corners/edges round off. This used to be a large
  * fraction of HALF so the whole room read as one continuous curved
@@ -85,6 +96,24 @@ const CURVE_SEGMENTS = 20;
 const CURVE_MAX_ANGLE = Math.PI * 0.18; // ~32° — moderate default; ~54° ("tight") was also screenshotted for comparison, see chat
 const CURVE_MAX_X = CURVE_MAX_ANGLE;
 const CURVE_MAX_Y = CURVE_MAX_ANGLE;
+/**
+ * How far the camera itself drifts sideways/up-down (world units) at full
+ * cursor deflection, easing toward the same direction the tunnel is
+ * currently bending in. The tunnel bending alone, with a perfectly static
+ * camera, turned out to still read as "the camera panned" rather than
+ * "the tunnel curved" — with the camera fixed, the only visible cue is
+ * the vanishing point sliding across the screen, and that's the same cue
+ * a camera turning in place would produce. A real bend normally reads as
+ * a bend because near and far surfaces move at different rates as the
+ * viewpoint itself moves through it (parallax); a small *positional*
+ * drift restores that cue without ever rotating the camera — it still
+ * looks in exactly the same absolute direction the whole time, it just
+ * does so from a slightly shifted vantage point, the way a car drifts
+ * toward the inside of a curve without the driver's head turning.
+ * Verified against a standalone high-contrast-grid prototype before
+ * porting here — see chat for the comparison clips.
+ */
+const CAMERA_DRIFT_MAX = HALF * 0.8;
 
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
@@ -214,6 +243,12 @@ export default function CubeRoom({ room }: { room: Room }) {
   // curve, not warping the room.
   const curveX = useRef(0);
   const curveY = useRef(0);
+  // Camera's own slight positional drift into the turn — see
+  // CAMERA_DRIFT_MAX above for why this exists. Eased independently from
+  // curveX/Y (same easing rate, just its own accumulator) since it drives
+  // camera.position rather than a shader uniform.
+  const camDriftX = useRef(0);
+  const camDriftY = useRef(0);
 
   const geometry = useMemo(
     // The color/fluting comes entirely from the fragment shader reading
@@ -528,6 +563,17 @@ export default function CubeRoom({ room }: { room: Room }) {
       material.uniforms.uCurveX.value = curveX.current;
       material.uniforms.uCurveY.value = curveY.current;
     }
+
+    // Camera drifts a little sideways/up-down in the same direction the
+    // tunnel is currently bending (see CAMERA_DRIFT_MAX above) — position
+    // only, never rotation, so it still looks in exactly the same
+    // direction the whole time.
+    const driftTargetX = (curveX.current / CURVE_MAX_X) * CAMERA_DRIFT_MAX;
+    const driftTargetY = (curveY.current / CURVE_MAX_Y) * CAMERA_DRIFT_MAX;
+    camDriftX.current += (driftTargetX - camDriftX.current) * 0.04;
+    camDriftY.current += (driftTargetY - camDriftY.current) * 0.04;
+    camera.position.x = camDriftX.current;
+    camera.position.y = camDriftY.current;
 
     // Slow forward-and-back drift along the tunnel's axis — real camera
     // movement (not just the painted pattern above) so the box's actual

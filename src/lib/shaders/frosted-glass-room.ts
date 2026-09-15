@@ -79,6 +79,38 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     // constant curvature (rather than a straight line) and place every
     // vertex at the same offset from that arc it originally had from the
     // straight centerline.
+    //
+    // A first version of this spread the whole turn over the tunnel's
+    // full length (curvature = thetaMax / tubeLength, so radius R =
+    // tubeLength / thetaMax). That's the mathematically "honest" choice,
+    // but this tunnel is enormously long relative to the viewer's
+    // standback (roughly 14x its own width) — so a turn gentle enough to
+    // still reach the far wall in a straight tube of that length works
+    // out to a radius of several hundred units, and the curvature visible
+    // within the camera's near field (the only part that's ever actually
+    // on screen) rounds to nothing: it measured as well under a pixel of
+    // deflection even at generous standback, which is exactly why it kept
+    // reading as the camera panning rather than the tunnel bending.
+    //
+    // Instead, the turn is concentrated into a short "bend zone" right at
+    // the front of the tunnel — long enough that the camera can stand
+    // back from it and still see a meaningful arc of it, short enough
+    // that the same thetaMax now corresponds to a much tighter, genuinely
+    // visible radius. Past the end of that zone the tube continues
+    // perfectly straight along whatever direction the bend finished
+    // facing — like a bent pipe elbow feeding into a long straight run —
+    // so the far two-thirds of the tunnel (which the viewer barely
+    // perceives as more than a converging point anyway) costs nothing
+    // extra and never has to fight the bend math for numerical stability.
+    //
+    // The straight extension is a plain per-point translation along a
+    // single shared tangent direction (same for every point regardless of
+    // its radial offset r, since concentric circles share a tangent angle
+    // at a given turn angle) — unlike an earlier attempt that rescaled
+    // distances non-uniformly per r to "restore" full depth, which
+    // diverged badly off-axis (corners overshot the intended back wall by
+    // hundreds of units). Adding a fixed offset per point, instead of
+    // scaling, keeps every point's true remaining distance exact.
     float thetaMax = length(vec2(uCurveX, uCurveY));
     vec2 bendDir = vec2(uCurveX, uCurveY) / max(thetaMax, 1e-5);
     // axisDir: the horizontal-plane direction the tube rotates *around*.
@@ -94,27 +126,23 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     float r = dot(position.xy, bendDir);
     float q = dot(position.xy, axisDir);
 
-    // bendT: 0 right where the visitor stands, growing linearly to 1 at
-    // the far/back wall — same normalized-depth convention the fragment
-    // shader's own depthN uses. A physically consistent bend treats the
-    // tunnel's centerline as an arc of constant curvature over its whole
-    // length: curvature k = thetaMax / length, so the turning radius
-    // R = 1 / k = length / thetaMax follows directly from how tight a
-    // turn thetaMax is allowed to be — no separate radius to tune, and no
-    // risk of it disagreeing with how far the tunnel actually needs to
-    // reach. (An earlier version tried decoupling the two — a small,
-    // reference-tight radius applied only over a short stretch near the
-    // viewer, then a straight rigid extension — but the camera here holds
-    // completely still rather than turning to look into the curve, and
-    // this tunnel's own cross-section is tiny next to how close the
-    // camera stands to it, so almost that entire near stretch ends up
-    // outside the frustum regardless of how it's built — the curve only
-    // ever reads correctly using the full length as its radius's basis.)
-    float depthN = clamp((position.z + uHalf.z) / (2.0 * uHalf.z), 0.0, 1.0);
-    float bendT = 1.0 - depthN;
-    float angle = thetaMax * bendT;
+    // sFront: distance from the front opening (0 at the front wall,
+    // growing toward the back), the natural axis to measure the bend
+    // zone against since it's anchored at the front where the viewer
+    // stands, independent of the tunnel's total length.
     float tubeLength = 2.0 * uHalf.z;
-    float R = tubeLength / max(thetaMax, 1e-4);
+    float sFront = uHalf.z - position.z;
+
+    // The zone's length is a fixed fraction of the room's own
+    // cross-section (not of tubeLength) — tying it to tubeLength would
+    // reintroduce the "radius grows with however long the tunnel
+    // happens to be" problem above; tying it to uHalf keeps the turn's
+    // tightness (and how much of it the camera can actually see)
+    // independent of how deep the tunnel recedes.
+    float bendZoneLength = uHalf.x * 8.0;
+    float zoneT = clamp(sFront / bendZoneLength, 0.0, 1.0);
+    float angle = thetaMax * zoneT;
+    float R = bendZoneLength / max(thetaMax, 1e-4);
 
     // Every point at radial offset r from the centerline sweeps its own
     // circle of radius (R - r) as the cross-section turns — very slightly
@@ -124,6 +152,13 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     float radiusAtPoint = R - r;
     float bentAlong = radiusAtPoint * sin(angle);
     float bentR = R - radiusAtPoint * cos(angle);
+
+    // Past the zone, keep travelling in a straight line along the
+    // direction the bend was last facing (shared by every r, see above)
+    // for whatever distance remains.
+    float extra = max(sFront - bendZoneLength, 0.0);
+    bentAlong += extra * cos(thetaMax);
+    bentR += extra * sin(thetaMax);
 
     vec3 bentPosition;
     bentPosition.x = bendDir.x * bentR + axisDir.x * q;
@@ -269,9 +304,29 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // so the nested frames stay individually readable even as the
     // depth-darkening below dims that whole region — otherwise the panels
     // furthest back would lose their seams into one flat dark square well
-    // before actually reaching the vanishing point.
-    float panelContrast = mix(0.16, 0.06, depthN);
+    // before actually reaching the vanishing point. Raised (was 0.16/0.06)
+    // so the rings read clearly enough to actually show the cursor-driven
+    // bend's curvature against, not just add a faint texture.
+    float panelContrast = mix(0.30, 0.13, depthN);
     float panelShade = 1.0 + panel * panelContrast;
+
+    // Longitudinal seams: the rings above only trace *cross-sections*, so
+    // a bend only ever shows up as each ring tilting slightly — nowhere
+    // near as legible as lines that actually run the tunnel's length and
+    // visibly arc with it. Adding a second, perpendicular set of seams
+    // (evenly spaced across whichever wall a fragment is on) gives the
+    // bend real lines to curve along, the same way the ceiling/floor
+    // stripes in a bent-pipe reference photo reveal its curve. Picks the
+    // wall's own in-surface "across" coordinate — y on the side walls, x
+    // on ceiling/floor/back — rather than always using world x, so the
+    // stripes run correctly along each wall rather than smearing through
+    // corners.
+    float crossCoord = (wx > wy && wx > wz) ? vPos.y : vPos.x;
+    float crossSpacing = uHalf.x / 3.0;
+    float crossUv = fract(crossCoord / crossSpacing);
+    float crossPanel = sin(crossUv * 3.14159265);
+    float crossContrast = mix(0.20, 0.09, depthN);
+    panelShade += crossPanel * crossContrast;
 
     // Ambient wash: color the whole surface carries just from how
     // energetic the moment is, independent of the travelling ripple. At
