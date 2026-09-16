@@ -46,10 +46,12 @@ const DEPTH = HALF * 14;
  * enough from the front opening to actually see a meaningful arc of that
  * zone unfold in front of it; at 1 unit almost the entire zone sat
  * outside the frustum and the bend read as flat no matter how the curve
- * math was tuned. 2x HALF is the smallest standback that reliably shows
- * the bend at full drag without any of the near geometry clipping
- * through the camera's near plane, while still leaving the room's resting
- * (uncurved) framing visually indistinguishable from before.
+ * math was tuned. 2x HALF reliably shows the bend at full drag while
+ * still leaving the room's resting (uncurved) framing visually
+ * indistinguishable from before. (Note: it's CURVE_MAX_ANGLE, not this,
+ * that actually keeps full-drag geometry from clipping through the
+ * camera's near plane — pushing standback further out doesn't shrink
+ * that clipping at all, confirmed by testing it directly.)
  */
 export const CAMERA_BASE_Z = DEPTH - HALF * 2.0;
 /**
@@ -80,41 +82,46 @@ const CORNER_RADIUS = HALF * 0.02;
 const CURVE_SEGMENTS = 20;
 /**
  * Total angle (radians) the tunnel has turned through by the time it
- * reaches the far/back wall, at full cursor (or finger) deflection —
- * see the vertex shader's bend math for how a cross-section's rotation
- * grows from 0 right at the viewer's own end up to this at the back wall.
- * This used to be a raw sideways offset in world units (the tunnel's
- * cross-sections just slid over without rotating), but that read as
- * camera movement rather than the tunnel itself turning — real curved
- * geometry needs cross-sections to actually rotate to keep "facing
- * forward" along the turn, which only an angle (not an offset) can drive.
- * ~quarter turn (Math.PI/2) matches the tight reference-image curve;
- * roughly a third of that reads as a noticeably gentler, still-obvious
- * turn. X and Y share the same max since the bend math combines them
- * into one tilted-axis turn rather than two independent axes.
+ * reaches the end of the near bend zone, at full cursor (or finger)
+ * deflection — see the vertex shader's bend math for how a cross-
+ * section's rotation grows from 0 right at the viewer's own end up to
+ * this by the end of that zone. This used to be a raw sideways offset in
+ * world units (the tunnel's cross-sections just slid over without
+ * rotating), but that read as camera movement rather than the tunnel
+ * itself turning — real curved geometry needs cross-sections to actually
+ * rotate to keep "facing forward" along the turn, which only an angle
+ * (not an offset) can drive.
+ *
+ * This was 32°, tuned purely for how the curve looked. That turned out
+ * to be too tight once the camera's own sideways/up-down drift was
+ * removed (see the note on that below): at the screen's extreme edges —
+ * and worse, its corners, where both axes max out at once — the near
+ * wall could swing far enough that a ray from the camera missed the bent
+ * geometry entirely, exposing empty space behind it as a black wedge
+ * cutting into the frame. Increasing the camera's standback and the
+ * bend zone's own length didn't change the size of that gap at all
+ * (confirmed by testing both independently), which pointed at thetaMax
+ * itself as the actual lever. 16° is the largest angle that stayed clean
+ * through every extreme (each screen edge, all four corners) with the
+ * camera held perfectly still — still a clearly visible turn, just not
+ * as dramatic as 32° was. X and Y share the same max since the bend math
+ * combines them into one tilted-axis turn rather than two independent
+ * axes.
  */
-const CURVE_MAX_ANGLE = Math.PI * 0.18; // ~32° — moderate default; ~54° ("tight") was also screenshotted for comparison, see chat
+const CURVE_MAX_ANGLE = Math.PI * 0.09; // ~16°
 const CURVE_MAX_X = CURVE_MAX_ANGLE;
 const CURVE_MAX_Y = CURVE_MAX_ANGLE;
-/**
- * How far the camera itself drifts sideways/up-down (world units) at full
- * cursor deflection, easing toward the same direction the tunnel is
- * currently bending in. The tunnel bending alone, with a perfectly static
- * camera, turned out to still read as "the camera panned" rather than
- * "the tunnel curved" — with the camera fixed, the only visible cue is
- * the vanishing point sliding across the screen, and that's the same cue
- * a camera turning in place would produce. A real bend normally reads as
- * a bend because near and far surfaces move at different rates as the
- * viewpoint itself moves through it (parallax); a small *positional*
- * drift restores that cue without ever rotating the camera — it still
- * looks in exactly the same absolute direction the whole time, it just
- * does so from a slightly shifted vantage point, the way a car drifts
- * toward the inside of a curve without the driver's head turning.
- * Verified against a standalone high-contrast-grid prototype before
- * porting here — see chat for the comparison clips.
- */
-const CAMERA_DRIFT_MAX = HALF * 0.8;
-
+// A camera sideways/up-down drift used to live here, easing the camera's
+// own position toward the direction the tunnel was bending in — added
+// back when the bend's own curvature was still too gentle to read on its
+// own (spread across the tunnel's full length, see frosted-glass-room.ts's
+// bend-zone comment). Now that the bend is concentrated into a short zone
+// right at the front — and visibly swings the near wall toward the
+// viewer on its own — that extra camera translation just made the whole
+// thing read as the *viewpoint* flying through free space rather than the
+// tunnel's own shape changing, the opposite of the intended feel, so it's
+// gone outright: the camera now only ever moves along its own fixed axis
+// (the pre-existing forward/back glide below), never sideways or up/down.
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
 
@@ -243,12 +250,6 @@ export default function CubeRoom({ room }: { room: Room }) {
   // curve, not warping the room.
   const curveX = useRef(0);
   const curveY = useRef(0);
-  // Camera's own slight positional drift into the turn — see
-  // CAMERA_DRIFT_MAX above for why this exists. Eased independently from
-  // curveX/Y (same easing rate, just its own accumulator) since it drives
-  // camera.position rather than a shader uniform.
-  const camDriftX = useRef(0);
-  const camDriftY = useRef(0);
 
   const geometry = useMemo(
     // The color/fluting comes entirely from the fragment shader reading
@@ -555,25 +556,29 @@ export default function CubeRoom({ room }: { room: Room }) {
     // axis at all times, the way your head stays roughly forward-facing
     // driving toward a bend in a road — so it's the tunnel visibly curving
     // away from that fixed view that reads as curving, not a look-around.
-    const curveTargetX = (pointer.x - 0.5) * 2 * CURVE_MAX_X;
-    const curveTargetY = (0.5 - pointer.y) * 2 * CURVE_MAX_Y;
+    // Raw cursor offset in each axis, independently in [-1, 1]. Turning
+    // each into an angle and using them as-is would let a corner of the
+    // screen (both axes maxed at once) produce a combined turn angle
+    // sqrt(2) times bigger than either axis alone ever reaches — enough,
+    // it turned out, to swing the near end of the bend zone past the
+    // camera's own near plane and expose the empty space behind it (seen
+    // as a black wedge cutting into the frame). Clamping the raw (dx, dy)
+    // vector to the unit circle before scaling by CURVE_MAX_ANGLE keeps
+    // the diagonal case capped at exactly the same worst-case angle as
+    // straight left/right/up/down, which is the range this was tuned and
+    // verified against.
+    const rawDX = (pointer.x - 0.5) * 2;
+    const rawDY = (0.5 - pointer.y) * 2;
+    const rawMag = Math.hypot(rawDX, rawDY);
+    const clampScale = rawMag > 1 ? 1 / rawMag : 1;
+    const curveTargetX = rawDX * clampScale * CURVE_MAX_X;
+    const curveTargetY = rawDY * clampScale * CURVE_MAX_Y;
     curveX.current += (curveTargetX - curveX.current) * 0.04;
     curveY.current += (curveTargetY - curveY.current) * 0.04;
     if (material) {
       material.uniforms.uCurveX.value = curveX.current;
       material.uniforms.uCurveY.value = curveY.current;
     }
-
-    // Camera drifts a little sideways/up-down in the same direction the
-    // tunnel is currently bending (see CAMERA_DRIFT_MAX above) — position
-    // only, never rotation, so it still looks in exactly the same
-    // direction the whole time.
-    const driftTargetX = (curveX.current / CURVE_MAX_X) * CAMERA_DRIFT_MAX;
-    const driftTargetY = (curveY.current / CURVE_MAX_Y) * CAMERA_DRIFT_MAX;
-    camDriftX.current += (driftTargetX - camDriftX.current) * 0.04;
-    camDriftY.current += (driftTargetY - camDriftY.current) * 0.04;
-    camera.position.x = camDriftX.current;
-    camera.position.y = camDriftY.current;
 
     // Slow forward-and-back drift along the tunnel's axis — real camera
     // movement (not just the painted pattern above) so the box's actual

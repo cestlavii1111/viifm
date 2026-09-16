@@ -130,7 +130,17 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     // growing toward the back), the natural axis to measure the bend
     // zone against since it's anchored at the front where the viewer
     // stands, independent of the tunnel's total length.
-    float tubeLength = 2.0 * uHalf.z;
+    //
+    // (An attempt to anchor this at the camera's own position instead —
+    // on the theory that the curve should be exactly zero exactly where
+    // the viewer stands — was tried and reverted: since angle = thetaMax
+    // * zoneT is exactly 0 at rest regardless of zoneT, anchoring at the
+    // camera collapsed the entire near, most-visible stretch of tunnel
+    // onto the camera's own position at rest, which is much worse than
+    // the clipping it was meant to fix. Front-wall anchoring keeps that
+    // same rest-state collapse tucked behind the camera instead, where
+    // it's invisible; see CURVE_MAX_ANGLE / CAMERA_BASE_Z for how the
+    // clipping at full drag is actually kept in check.)
     float sFront = uHalf.z - position.z;
 
     // The zone's length is a fixed fraction of the room's own
