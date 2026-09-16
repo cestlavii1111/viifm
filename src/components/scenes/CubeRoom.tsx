@@ -39,21 +39,8 @@ const DEPTH = HALF * 14;
  * front opening. Exported so RoomCanvas's initial camera position can
  * derive from this instead of a hand-copied literal that has to be kept
  * in sync by hand whenever DEPTH changes.
- *
- * Standback was 1 unit for most of this room's life — fine while the
- * tunnel was a straight shift, but the turn-on-cursor curve (see
- * frosted-glass-room.ts's bend zone) needs the camera sitting back far
- * enough from the front opening to actually see a meaningful arc of that
- * zone unfold in front of it; at 1 unit almost the entire zone sat
- * outside the frustum and the bend read as flat no matter how the curve
- * math was tuned. 2x HALF reliably shows the bend at full drag while
- * still leaving the room's resting (uncurved) framing visually
- * indistinguishable from before. (Note: it's CURVE_MAX_ANGLE, not this,
- * that actually keeps full-drag geometry from clipping through the
- * camera's near plane — pushing standback further out doesn't shrink
- * that clipping at all, confirmed by testing it directly.)
  */
-export const CAMERA_BASE_Z = DEPTH - HALF * 2.0;
+export const CAMERA_BASE_Z = DEPTH - 1;
 /**
  * How generously the corners/edges round off. This used to be a large
  * fraction of HALF so the whole room read as one continuous curved
@@ -64,70 +51,7 @@ export const CAMERA_BASE_Z = DEPTH - HALF * 2.0;
  * a tunnel of square frames receding back rather than a rounded chamber.
  */
 const CORNER_RADIUS = HALF * 0.02;
-/**
- * Segments passed to RoundedBoxGeometry — also, as a side effect of how
- * that geometry is built (it starts from a plain BoxGeometry subdivided
- * `segments*2+1` times per axis, including depth), how many steps long
- * the tunnel's walls are sliced into lengthwise. That only ever mattered
- * for corner-rounding smoothness before (see CORNER_RADIUS above, which
- * deliberately keeps corners near-sharp), so it stayed low. Now that the
- * cursor-driven curve below actually bends those vertices sideways
- * per-slice, too few slices would make the bend look faceted/kinked
- * rather than a smooth arc — this needs to be high enough for the curve
- * to read as one continuous curve down the tunnel's real length (DEPTH),
- * not for the rounding (which stays just as sharp either way, since
- * CORNER_RADIUS is unchanged). Still trivial geometry either way — this
- * is one static mesh, not something rebuilt per frame.
- */
-const CURVE_SEGMENTS = 20;
-/**
- * Total angle (radians) the tunnel has turned through by the time it
- * reaches the end of the near bend zone, at full cursor (or finger)
- * deflection — see the vertex shader's bend math for how a cross-
- * section's rotation grows from 0 right at the viewer's own end up to
- * this by the end of that zone. This used to be a raw sideways offset in
- * world units (the tunnel's cross-sections just slid over without
- * rotating), but that read as camera movement rather than the tunnel
- * itself turning — real curved geometry needs cross-sections to actually
- * rotate to keep "facing forward" along the turn, which only an angle
- * (not an offset) can drive.
- *
- * This was tuned down to 16° for a round after the camera's own
- * sideways/up-down drift was removed: at the screen's extreme edges —
- * and worse, its corners, where both axes max out at once — the near
- * wall could swing far enough that a ray from the camera missed the bent
- * geometry entirely, exposing empty space behind it as a black wedge
- * cutting into the frame. Increasing the camera's standback and the
- * bend zone's own length didn't change the size of that gap at all
- * (confirmed by testing both independently), so thetaMax itself got
- * turned down as the only lever left.
- *
- * The actual fix turned out to be a different knob: the vertex shader's
- * bend zone used to start right at the front wall, meaning the curve
- * began right where the viewer stands — every screen-edge/corner
- * clipping case above happened because the geometry immediately
- * surrounding the camera itself was the part swinging around. Now that
- * the zone doesn't start until a comfortable distance past the camera
- * (see bendStart in the shader), the near clipping problem is gone on
- * its own — nothing close enough to clip ever bends at all — so the
- * angle went back up to 32° for a clearly visible turn. X and Y share
- * the same max since the bend math combines them into one tilted-axis
- * turn rather than two independent axes.
- */
-const CURVE_MAX_ANGLE = Math.PI * 0.18; // ~32°
-const CURVE_MAX_X = CURVE_MAX_ANGLE;
-const CURVE_MAX_Y = CURVE_MAX_ANGLE;
-// A camera sideways/up-down drift used to live here, easing the camera's
-// own position toward the direction the tunnel was bending in — added
-// back when the bend's own curvature was still too gentle to read on its
-// own (spread across the tunnel's full length, see frosted-glass-room.ts's
-// bend-zone comment). Now that the bend is concentrated into a short zone
-// right at the front — and visibly swings the near wall toward the
-// viewer on its own — that extra camera translation just made the whole
-// thing read as the *viewpoint* flying through free space rather than the
-// tunnel's own shape changing, the opposite of the intended feel, so it's
-// gone outright: the camera now only ever moves along its own fixed axis
-// (the pre-existing forward/back glide below), never sideways or up/down.
+
 type BandKey = keyof FrequencyBands;
 type WallId = "back" | "left" | "right" | "ceiling" | "floor";
 
@@ -247,15 +171,6 @@ export default function CubeRoom({ room }: { room: Room }) {
   // Scrolling the pattern instead has no such limit and never needs a
   // seam/reset. See uDepthScroll in the shader.
   const depthScroll = useRef(0);
-  // Cursor/finger-driven tunnel curve — how far the far end of the tunnel
-  // currently leans sideways/up-down (world units), eased toward a target
-  // derived from the pointer each frame so a sudden cursor jump steers
-  // smoothly into the turn rather than snapping the whole tunnel over.
-  // Kept deliberately modest relative to HALF (the tunnel's own
-  // cross-section) — this is meant to read as steering through a gentle
-  // curve, not warping the room.
-  const curveX = useRef(0);
-  const curveY = useRef(0);
 
   const geometry = useMemo(
     // The color/fluting comes entirely from the fragment shader reading
@@ -263,7 +178,7 @@ export default function CubeRoom({ room }: { room: Room }) {
     // subdivision — 14 segments was only ever buying smoother *corner*
     // curvature. With the corners now nearly sharp (see CORNER_RADIUS)
     // that resolution is wasted, so this is dropped to 4.
-    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, DEPTH * 2, CURVE_SEGMENTS, CORNER_RADIUS),
+    () => new RoundedBoxGeometry(HALF * 2, HALF * 2, DEPTH * 2, 4, CORNER_RADIUS),
     []
   );
 
@@ -315,8 +230,6 @@ export default function CubeRoom({ room }: { room: Room }) {
       uCascadeMaskCeiling: { value: 1 },
       uCascadeMaskFloor: { value: 1 },
       uDepthScroll: { value: 0 },
-      uCurveX: { value: 0 },
-      uCurveY: { value: 0 },
       // The base surface is now an intentionally clean white (see the
       // shader) rather than a bright-clipping colored wash, so exposure
       // no longer needs to fight the base itself — it only needs to keep
@@ -547,44 +460,12 @@ export default function CubeRoom({ room }: { room: Room }) {
       material.uniforms.uDepthScroll.value = depthScroll.current;
     }
 
-    // Cursor/finger steers the tunnel itself: how far off-center the
-    // pointer sits sets how hard the tunnel curves — cursor left curves it
-    // left, cursor up curves it up. This used to be paired with a subtle
-    // camera head-turn toward the same pointer position (the visitor
-    // "looking around" the room), but that turned out to work directly
-    // against the curve reading as a curve at all: the camera would swing
-    // to follow the pointer and, in doing so, chase the bent tunnel's
-    // vanishing point back toward the center of the screen — visually
-    // canceling out the one cue (the vanishing point actually drifting
-    // off-center) that reads as "the road bends," leaving only the
-    // camera's own pan as the visible motion. Removed entirely: the
-    // camera now holds still and looks straight down the tunnel's own
-    // axis at all times, the way your head stays roughly forward-facing
-    // driving toward a bend in a road — so it's the tunnel visibly curving
-    // away from that fixed view that reads as curving, not a look-around.
-    // Raw cursor offset in each axis, independently in [-1, 1]. Turning
-    // each into an angle and using them as-is would let a corner of the
-    // screen (both axes maxed at once) produce a combined turn angle
-    // sqrt(2) times bigger than either axis alone ever reaches — enough,
-    // it turned out, to swing the near end of the bend zone past the
-    // camera's own near plane and expose the empty space behind it (seen
-    // as a black wedge cutting into the frame). Clamping the raw (dx, dy)
-    // vector to the unit circle before scaling by CURVE_MAX_ANGLE keeps
-    // the diagonal case capped at exactly the same worst-case angle as
-    // straight left/right/up/down, which is the range this was tuned and
-    // verified against.
-    const rawDX = (pointer.x - 0.5) * 2;
-    const rawDY = (0.5 - pointer.y) * 2;
-    const rawMag = Math.hypot(rawDX, rawDY);
-    const clampScale = rawMag > 1 ? 1 / rawMag : 1;
-    const curveTargetX = rawDX * clampScale * CURVE_MAX_X;
-    const curveTargetY = rawDY * clampScale * CURVE_MAX_Y;
-    curveX.current += (curveTargetX - curveX.current) * 0.04;
-    curveY.current += (curveTargetY - curveY.current) * 0.04;
-    if (material) {
-      material.uniforms.uCurveX.value = curveX.current;
-      material.uniforms.uCurveY.value = curveY.current;
-    }
+    // Subtle head-turn toward the pointer — the visitor looking around the
+    // room from where they stand, not moving through it.
+    const targetYaw = (pointer.x - 0.5) * 0.5;
+    const targetPitch = (0.5 - pointer.y) * 0.25;
+    camera.rotation.y += (targetYaw - camera.rotation.y) * 0.04;
+    camera.rotation.x += (targetPitch - camera.rotation.x) * 0.04;
 
     // Slow forward-and-back drift along the tunnel's axis — real camera
     // movement (not just the painted pattern above) so the box's actual

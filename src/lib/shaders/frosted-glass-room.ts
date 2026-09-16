@@ -37,172 +37,11 @@
  * go but straight back to clipped white.
  */
 export const frostedGlassRoomVertexShader = /* glsl */ `
-  // uCurveX/uCurveY are no longer a raw sideways offset — they're the X and
-  // Y components of a single "how far the tunnel has turned" angle (in
-  // radians), driven by the visitor's cursor (or, on mobile, finger)
-  // position and eased in JS. Splitting the total turn angle into an X part
-  // and a Y part (rather than one scalar angle plus a separate direction)
-  // means the existing per-axis easing in JS keeps working unchanged, and
-  // a diagonal cursor position naturally produces a bend around a tilted
-  // axis — a single turn that's part "curving left/right" and part
-  // "cresting a hill" at once, rather than the two ever needing to be
-  // composed as two separate bends.
-  uniform float uCurveX;
-  uniform float uCurveY;
-  uniform vec3 uHalf;
   varying vec3 vPos;
 
   void main() {
-    // vPos stays the room's original, straight-tunnel coordinates — every
-    // fragment-shader calculation (which wall a point belongs to, how far
-    // down the tunnel it is, the panel seams) is expressed in these
-    // "logical" coordinates and has no reason to change just because the
-    // tunnel's actual on-screen shape is bending: the panel seams below
-    // are indexed by this same (unbent) depth, so as the mesh's real,
-    // bent vertex positions carry those seams along with them, the seam
-    // rings themselves visibly curve along the bend — exactly the curved
-    // grid-line look a bent pipe has — without the fragment shader having
-    // to know anything about the bend at all.
     vPos = position;
-
-    // The first version of this curve just slid each cross-section
-    // sideways by a growing amount — cheap, but every cross-section stayed
-    // flat and pointed straight ahead, so nothing about the tube's own
-    // *shape* ever visibly curved; only its position on screen shifted,
-    // which read as camera movement rather than the tunnel turning. A real
-    // bend has to rotate each cross-section to keep facing "forward" along
-    // the turn (the way a bent pipe's rings tilt to stay perpendicular to
-    // the pipe), which is what makes the near/inside wall visibly swing
-    // toward the viewer and the far/outside wall recede — the actual
-    // signature the reference images show. The math below is a standard
-    // "bend" deformation: treat the tunnel's centerline as an arc of
-    // constant curvature (rather than a straight line) and place every
-    // vertex at the same offset from that arc it originally had from the
-    // straight centerline.
-    //
-    // A first version of this spread the whole turn over the tunnel's
-    // full length (curvature = thetaMax / tubeLength, so radius R =
-    // tubeLength / thetaMax). That's the mathematically "honest" choice,
-    // but this tunnel is enormously long relative to the viewer's
-    // standback (roughly 14x its own width) — so a turn gentle enough to
-    // still reach the far wall in a straight tube of that length works
-    // out to a radius of several hundred units, and the curvature visible
-    // within the camera's near field (the only part that's ever actually
-    // on screen) rounds to nothing: it measured as well under a pixel of
-    // deflection even at generous standback, which is exactly why it kept
-    // reading as the camera panning rather than the tunnel bending.
-    //
-    // Instead, the turn is concentrated into a short "bend zone" right at
-    // the front of the tunnel — long enough that the camera can stand
-    // back from it and still see a meaningful arc of it, short enough
-    // that the same thetaMax now corresponds to a much tighter, genuinely
-    // visible radius. Past the end of that zone the tube continues
-    // perfectly straight along whatever direction the bend finished
-    // facing — like a bent pipe elbow feeding into a long straight run —
-    // so the far two-thirds of the tunnel (which the viewer barely
-    // perceives as more than a converging point anyway) costs nothing
-    // extra and never has to fight the bend math for numerical stability.
-    //
-    // The straight extension is a plain per-point translation along a
-    // single shared tangent direction (same for every point regardless of
-    // its radial offset r, since concentric circles share a tangent angle
-    // at a given turn angle) — unlike an earlier attempt that rescaled
-    // distances non-uniformly per r to "restore" full depth, which
-    // diverged badly off-axis (corners overshot the intended back wall by
-    // hundreds of units). Adding a fixed offset per point, instead of
-    // scaling, keeps every point's true remaining distance exact.
-    float thetaMax = length(vec2(uCurveX, uCurveY));
-    vec2 bendDir = vec2(uCurveX, uCurveY) / max(thetaMax, 1e-5);
-    // axisDir: the horizontal-plane direction the tube rotates *around*.
-    // Perpendicular to bendDir so that any offset purely along axisDir
-    // (e.g. straight up/down when bending left/right) sits exactly on the
-    // rotation axis and is left untouched by it, same as a real pipe bend
-    // only moving the cross-section within its own turning plane.
-    vec2 axisDir = vec2(-bendDir.y, bendDir.x);
-
-    // Split this vertex's cross-section offset into the component that
-    // lies in the turning plane (r, along bendDir) and the component that
-    // sits on the rotation axis itself and never moves (q, along axisDir).
-    float r = dot(position.xy, bendDir);
-    float q = dot(position.xy, axisDir);
-
-    // sFront: distance from the front opening (0 at the front wall,
-    // growing toward the back), the natural axis to measure the bend
-    // zone against since it's anchored at the front where the viewer
-    // stands, independent of the tunnel's total length.
-    //
-    // (An attempt to anchor this at the camera's own position instead —
-    // on the theory that the curve should be exactly zero exactly where
-    // the viewer stands — was tried and reverted: since angle = thetaMax
-    // * zoneT is exactly 0 at rest regardless of zoneT, anchoring at the
-    // camera collapsed the entire near, most-visible stretch of tunnel
-    // onto the camera's own position at rest, which is much worse than
-    // the clipping it was meant to fix. Front-wall anchoring keeps that
-    // same rest-state collapse tucked behind the camera instead, where
-    // it's invisible; see CURVE_MAX_ANGLE / CAMERA_BASE_Z for how the
-    // clipping at full drag is actually kept in check.)
-    float sFront = uHalf.z - position.z;
-
-    // bendStart: how far into the tunnel the curve actually begins.
-    // Everything nearer than this — which includes the camera and
-    // everything immediately around it — stays perfectly straight and
-    // un-deformed, full stop. This used to be 0 (the curve started
-    // right at the front wall, i.e. right where the viewer is standing),
-    // which read as the cursor pulling the walls in around the viewer
-    // rather than the tunnel ahead changing shape — the same complaint
-    // the camera-drift removal was chasing, just caused by the geometry
-    // itself this time instead of the camera. Starting the curve a
-    // comfortable distance past the camera keeps the viewer's own
-    // framing completely fixed and puts the visible change entirely out
-    // ahead, where it reads as "the tunnel bends" rather than "the walls
-    // are closing in on me."
-    float bendStart = uHalf.x * 5.0;
-    // The zone's length is a fixed fraction of the room's own
-    // cross-section (not of tubeLength) — tying it to tubeLength would
-    // reintroduce the "radius grows with however long the tunnel
-    // happens to be" problem above; tying it to uHalf keeps the turn's
-    // tightness (and how much of it the camera can actually see)
-    // independent of how deep the tunnel recedes.
-    float bendZoneLength = uHalf.x * 8.0;
-    float zoneT = clamp((sFront - bendStart) / bendZoneLength, 0.0, 1.0);
-    float angle = thetaMax * zoneT;
-    float R = bendZoneLength / max(thetaMax, 1e-4);
-
-    // Every point at radial offset r from the centerline sweeps its own
-    // circle of radius (R - r) as the cross-section turns — very slightly
-    // smaller for points on the inside of the turn than the outside,
-    // which is what keeps a turning cross-section's own rings reading as
-    // genuinely rotating rather than just the whole tube translating.
-    // (At zoneT == 0 — everywhere at or before bendStart — angle is 0 and
-    // this correctly reduces to bentR == r, i.e. no change at all.)
-    float radiusAtPoint = R - r;
-    float bentAlong = radiusAtPoint * sin(angle);
-    float bentR = R - radiusAtPoint * cos(angle);
-
-    // Below bendStart, bentAlong above is stuck at 0 regardless of how
-    // far below it sFront actually is (angle is 0 there for every zoneT),
-    // so it has to be added back explicitly — otherwise every point
-    // nearer than bendStart would collapse onto the same depth instead of
-    // staying at its own true, un-deformed position. min(sFront,
-    // bendStart) is exactly sFront itself for anything in the straight
-    // run-up (the identity this whole expression needs there) and pins
-    // to bendStart for anything at or past it, handing off cleanly to the
-    // zone's own math above.
-    bentAlong += min(sFront, bendStart);
-
-    // Past the zone, keep travelling in a straight line along the
-    // direction the bend was last facing (shared by every r, see above)
-    // for whatever distance remains.
-    float extra = max(sFront - bendStart - bendZoneLength, 0.0);
-    bentAlong += extra * cos(thetaMax);
-    bentR += extra * sin(thetaMax);
-
-    vec3 bentPosition;
-    bentPosition.x = bendDir.x * bentR + axisDir.x * q;
-    bentPosition.y = bendDir.y * bentR + axisDir.y * q;
-    bentPosition.z = uHalf.z - bentAlong;
-
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(bentPosition, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
@@ -341,29 +180,9 @@ export const frostedGlassRoomFragmentShader = /* glsl */ `
     // so the nested frames stay individually readable even as the
     // depth-darkening below dims that whole region — otherwise the panels
     // furthest back would lose their seams into one flat dark square well
-    // before actually reaching the vanishing point. Raised (was 0.16/0.06)
-    // so the rings read clearly enough to actually show the cursor-driven
-    // bend's curvature against, not just add a faint texture.
-    float panelContrast = mix(0.30, 0.13, depthN);
+    // before actually reaching the vanishing point.
+    float panelContrast = mix(0.16, 0.06, depthN);
     float panelShade = 1.0 + panel * panelContrast;
-
-    // Longitudinal seams: the rings above only trace *cross-sections*, so
-    // a bend only ever shows up as each ring tilting slightly — nowhere
-    // near as legible as lines that actually run the tunnel's length and
-    // visibly arc with it. Adding a second, perpendicular set of seams
-    // (evenly spaced across whichever wall a fragment is on) gives the
-    // bend real lines to curve along, the same way the ceiling/floor
-    // stripes in a bent-pipe reference photo reveal its curve. Picks the
-    // wall's own in-surface "across" coordinate — y on the side walls, x
-    // on ceiling/floor/back — rather than always using world x, so the
-    // stripes run correctly along each wall rather than smearing through
-    // corners.
-    float crossCoord = (wx > wy && wx > wz) ? vPos.y : vPos.x;
-    float crossSpacing = uHalf.x / 3.0;
-    float crossUv = fract(crossCoord / crossSpacing);
-    float crossPanel = sin(crossUv * 3.14159265);
-    float crossContrast = mix(0.20, 0.09, depthN);
-    panelShade += crossPanel * crossContrast;
 
     // Ambient wash: color the whole surface carries just from how
     // energetic the moment is, independent of the travelling ripple. At
