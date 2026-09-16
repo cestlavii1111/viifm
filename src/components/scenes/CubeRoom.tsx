@@ -92,23 +92,29 @@ const CURVE_SEGMENTS = 20;
  * rotate to keep "facing forward" along the turn, which only an angle
  * (not an offset) can drive.
  *
- * This was 32°, tuned purely for how the curve looked. That turned out
- * to be too tight once the camera's own sideways/up-down drift was
- * removed (see the note on that below): at the screen's extreme edges —
+ * This was tuned down to 16° for a round after the camera's own
+ * sideways/up-down drift was removed: at the screen's extreme edges —
  * and worse, its corners, where both axes max out at once — the near
  * wall could swing far enough that a ray from the camera missed the bent
  * geometry entirely, exposing empty space behind it as a black wedge
  * cutting into the frame. Increasing the camera's standback and the
  * bend zone's own length didn't change the size of that gap at all
- * (confirmed by testing both independently), which pointed at thetaMax
- * itself as the actual lever. 16° is the largest angle that stayed clean
- * through every extreme (each screen edge, all four corners) with the
- * camera held perfectly still — still a clearly visible turn, just not
- * as dramatic as 32° was. X and Y share the same max since the bend math
- * combines them into one tilted-axis turn rather than two independent
- * axes.
+ * (confirmed by testing both independently), so thetaMax itself got
+ * turned down as the only lever left.
+ *
+ * The actual fix turned out to be a different knob: the vertex shader's
+ * bend zone used to start right at the front wall, meaning the curve
+ * began right where the viewer stands — every screen-edge/corner
+ * clipping case above happened because the geometry immediately
+ * surrounding the camera itself was the part swinging around. Now that
+ * the zone doesn't start until a comfortable distance past the camera
+ * (see bendStart in the shader), the near clipping problem is gone on
+ * its own — nothing close enough to clip ever bends at all — so the
+ * angle went back up to 32° for a clearly visible turn. X and Y share
+ * the same max since the bend math combines them into one tilted-axis
+ * turn rather than two independent axes.
  */
-const CURVE_MAX_ANGLE = Math.PI * 0.09; // ~16°
+const CURVE_MAX_ANGLE = Math.PI * 0.18; // ~32°
 const CURVE_MAX_X = CURVE_MAX_ANGLE;
 const CURVE_MAX_Y = CURVE_MAX_ANGLE;
 // A camera sideways/up-down drift used to live here, easing the camera's

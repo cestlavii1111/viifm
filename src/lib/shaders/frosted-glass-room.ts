@@ -143,6 +143,20 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     // clipping at full drag is actually kept in check.)
     float sFront = uHalf.z - position.z;
 
+    // bendStart: how far into the tunnel the curve actually begins.
+    // Everything nearer than this — which includes the camera and
+    // everything immediately around it — stays perfectly straight and
+    // un-deformed, full stop. This used to be 0 (the curve started
+    // right at the front wall, i.e. right where the viewer is standing),
+    // which read as the cursor pulling the walls in around the viewer
+    // rather than the tunnel ahead changing shape — the same complaint
+    // the camera-drift removal was chasing, just caused by the geometry
+    // itself this time instead of the camera. Starting the curve a
+    // comfortable distance past the camera keeps the viewer's own
+    // framing completely fixed and puts the visible change entirely out
+    // ahead, where it reads as "the tunnel bends" rather than "the walls
+    // are closing in on me."
+    float bendStart = uHalf.x * 5.0;
     // The zone's length is a fixed fraction of the room's own
     // cross-section (not of tubeLength) — tying it to tubeLength would
     // reintroduce the "radius grows with however long the tunnel
@@ -150,7 +164,7 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     // tightness (and how much of it the camera can actually see)
     // independent of how deep the tunnel recedes.
     float bendZoneLength = uHalf.x * 8.0;
-    float zoneT = clamp(sFront / bendZoneLength, 0.0, 1.0);
+    float zoneT = clamp((sFront - bendStart) / bendZoneLength, 0.0, 1.0);
     float angle = thetaMax * zoneT;
     float R = bendZoneLength / max(thetaMax, 1e-4);
 
@@ -159,14 +173,27 @@ export const frostedGlassRoomVertexShader = /* glsl */ `
     // smaller for points on the inside of the turn than the outside,
     // which is what keeps a turning cross-section's own rings reading as
     // genuinely rotating rather than just the whole tube translating.
+    // (At zoneT == 0 — everywhere at or before bendStart — angle is 0 and
+    // this correctly reduces to bentR == r, i.e. no change at all.)
     float radiusAtPoint = R - r;
     float bentAlong = radiusAtPoint * sin(angle);
     float bentR = R - radiusAtPoint * cos(angle);
 
+    // Below bendStart, bentAlong above is stuck at 0 regardless of how
+    // far below it sFront actually is (angle is 0 there for every zoneT),
+    // so it has to be added back explicitly — otherwise every point
+    // nearer than bendStart would collapse onto the same depth instead of
+    // staying at its own true, un-deformed position. min(sFront,
+    // bendStart) is exactly sFront itself for anything in the straight
+    // run-up (the identity this whole expression needs there) and pins
+    // to bendStart for anything at or past it, handing off cleanly to the
+    // zone's own math above.
+    bentAlong += min(sFront, bendStart);
+
     // Past the zone, keep travelling in a straight line along the
     // direction the bend was last facing (shared by every r, see above)
     // for whatever distance remains.
-    float extra = max(sFront - bendZoneLength, 0.0);
+    float extra = max(sFront - bendStart - bendZoneLength, 0.0);
     bentAlong += extra * cos(thetaMax);
     bentR += extra * sin(thetaMax);
 
