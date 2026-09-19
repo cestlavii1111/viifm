@@ -393,35 +393,54 @@ export function useAudioEngine(
           pendingStopRef.current = undefined;
         }
         if (!sourceRef.current) {
-          void loadBuffer(ctx, audioSrc!).then((buffer) => {
-            // Stale by the time it resolved — the track or play state
-            // changed again while this was decoding.
-            if (cancelled || currentSrcRef.current !== audioSrc || sourceRef.current) return;
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            // Play through once and advance to the next track rather than
-            // looping the same one forever. `ended` also fires for our own
-            // deliberate .stop() calls (pause, track switch, unmount) —
-            // intentionalStopRef distinguishes those from a real, natural
-            // end-of-track so only the latter calls onTrackEnd.
-            source.loop = false;
-            source.onended = () => {
-              if (intentionalStopRef.current) {
-                intentionalStopRef.current = false;
-                return;
-              }
-              if (sourceRef.current === source) {
-                sourceRef.current = null;
-              }
+          void loadBuffer(ctx, audioSrc!)
+            .then((buffer) => {
+              // Stale by the time it resolved — the track or play state
+              // changed again while this was decoding.
+              if (cancelled || currentSrcRef.current !== audioSrc || sourceRef.current) return;
+              const source = ctx.createBufferSource();
+              source.buffer = buffer;
+              // Play through once and advance to the next track rather than
+              // looping the same one forever. `ended` also fires for our own
+              // deliberate .stop() calls (pause, track switch, unmount) —
+              // intentionalStopRef distinguishes those from a real, natural
+              // end-of-track so only the latter calls onTrackEnd.
+              source.loop = false;
+              source.onended = () => {
+                if (intentionalStopRef.current) {
+                  intentionalStopRef.current = false;
+                  return;
+                }
+                if (sourceRef.current === source) {
+                  sourceRef.current = null;
+                }
+                offsetRef.current = 0;
+                onTrackEndRef.current?.();
+              };
+              source.connect(audioGain);
+              const offset = buffer.duration > 0 ? offsetRef.current % buffer.duration : 0;
+              source.start(0, offset);
+              startedAtRef.current = ctx.currentTime;
+              sourceRef.current = source;
+            })
+            .catch(() => {
+              // A flaky fetch or a decode failure here used to leave the
+              // room stuck: audioGain had already been ramped up below, but
+              // with no source node ever created there was nothing to play
+              // and nothing left to retry it later — this promise had
+              // already settled, so the effect would never run again on
+              // its own. That's what read as "the music stops entirely
+              // after a track ends" — silence until the visitor manually
+              // clicked an arrow, which works only because switching
+              // tracks changes audioSrc and forces this whole effect (and
+              // therefore a fresh load attempt) to re-run. Instead, treat a
+              // failed load the same as a track that finished playing —
+              // skip ahead on its own rather than waiting for a person to
+              // notice and intervene.
+              if (cancelled || currentSrcRef.current !== audioSrc) return;
               offsetRef.current = 0;
               onTrackEndRef.current?.();
-            };
-            source.connect(audioGain);
-            const offset = buffer.duration > 0 ? offsetRef.current % buffer.duration : 0;
-            source.start(0, offset);
-            startedAtRef.current = ctx.currentTime;
-            sourceRef.current = source;
-          });
+            });
         }
         audioGain.gain.setTargetAtTime(1, ctx.currentTime, TRACK_FADE_SECONDS);
       } else {

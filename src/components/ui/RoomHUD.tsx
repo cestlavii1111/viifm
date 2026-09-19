@@ -368,6 +368,20 @@ export default function RoomHUD({ room }: { room: Room }) {
             {isPlaying ? "❙❙" : "▶"}
           </button>
 
+          {/* Next-track sits right after play/pause (rather than after the
+              title, on the pill's far side) so all three transport controls
+              — prev, play/pause, next — read as one cluster instead of
+              bracketing the title between them. */}
+          {TRACKS.length > 1 && (
+            <button
+              onClick={nextTrack}
+              aria-label="Next track"
+              className="flex h-9 w-9 shrink-0 items-center justify-center text-base text-white/50 transition hover:text-white"
+            >
+              →
+            </button>
+          )}
+
           {/* Fixed-width slot (never resizes with the track), replacing
               the old truncate+ellipsis span. Mobile's width (5.5rem) and
               desktop's (16rem) are carried over unchanged from the old
@@ -395,16 +409,6 @@ export default function RoomHUD({ room }: { room: Room }) {
               </motion.div>
             </AnimatePresence>
           </div>
-
-          {TRACKS.length > 1 && (
-            <button
-              onClick={nextTrack}
-              aria-label="Next track"
-              className="flex h-9 w-9 shrink-0 items-center justify-center text-base text-white/50 transition hover:text-white"
-            >
-              →
-            </button>
-          )}
 
           <input
             type="range"
