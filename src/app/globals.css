@@ -12,6 +12,19 @@
 
 html,
 body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Scroll/zoom lock for the immersive Listening Room only — toggled onto
+   <html> by Experience.tsx while it's mounted (see its useEffect) and
+   removed on unmount, so the rest of the site (landing, gallery, contact)
+   keeps completely normal scrolling and pinch-zoom. Applying this
+   globally to every page would silently break scrolling on every other
+   route, which is why none of it lives on the bare html/body selector
+   anymore. */
+html.room-mode,
+html.room-mode body {
   height: 100%;
   /* One hair taller than the visible viewport on purpose — see
      use-hide-mobile-chrome.ts. Mobile Safari's own address bar/toolbar
@@ -23,8 +36,6 @@ body {
      underneath it. This tiny bit of extra height is what that hook
      scrolls into to nudge the chrome away. */
   min-height: calc(100dvh + 1px);
-  background: var(--background);
-  color: var(--foreground);
   /* iOS Safari still rubber-bands the document past its own edges even
      with overflow: hidden on body — the room stays put but the browser
      lets the page itself stretch on an overscroll gesture, which for a
@@ -35,6 +46,7 @@ body {
      touch-action doesn't affect). Between the two, the extra height above
      never becomes a visible or draggable scroll area — it only exists for
      that one programmatic nudge. */
+  overflow: hidden;
   overscroll-behavior: none;
   touch-action: none;
 }

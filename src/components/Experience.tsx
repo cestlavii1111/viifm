@@ -60,6 +60,17 @@ export default function Experience() {
   // so it's already collapsed by the time the visitor enters the room.
   useHideMobileChrome();
 
+  // Scoped scroll/zoom lock — see globals.css's `html.room-mode` rules.
+  // Toggled on <html> only while this component is mounted (i.e. only on
+  // the /listening-room route), so the rest of the site keeps normal
+  // scrolling and pinch-zoom.
+  useEffect(() => {
+    document.documentElement.classList.add("room-mode");
+    return () => {
+      document.documentElement.classList.remove("room-mode");
+    };
+  }, []);
+
   useEffect(() => {
     if (isIdle) {
       const timer = window.setTimeout(() => setCursorHidden(true), IDLE_FADE_OUT_MS);

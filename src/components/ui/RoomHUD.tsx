@@ -7,6 +7,7 @@ import { useExperience } from "@/lib/store";
 import { ROOMS } from "@/lib/rooms";
 import { TRACKS } from "@/lib/tracks";
 import { useFullscreen } from "@/lib/use-fullscreen";
+import SiteNav from "@/components/ui/SiteNav";
 
 // How fast the ticker scrolls once a title is long enough to overflow its
 // fixed-width slot, in pixels/second — chosen so a duration falls out of
@@ -256,6 +257,13 @@ export default function RoomHUD({ room }: { room: Room }) {
               )}
             </button>
           )}
+
+          {/* Site-wide nav (Home/Listening Room/Gallery/Contact) — rendered
+              inline so it's just one more icon in this row, fading with
+              the same idleFadeClass as the fullscreen toggle next to it
+              rather than sitting there permanently like the standalone
+              pages' corner menu does. */}
+          <SiteNav inline fadeClassName={idleFadeClass} />
         </div>
       </div>
 
